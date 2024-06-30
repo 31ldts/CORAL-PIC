@@ -346,3 +346,85 @@ def plot_matrix(matrix: list, plotName: str, axis:str, labelX: str=None, labelY:
     
     # Save the plot as a PNG file
     plt.savefig(os.path.join(saving_directory, plotName + '.png'))
+
+"""
+Filters the matrix based on specified interactions.
+
+Args:
+    matrix (list): The matrix to filter, represented as a list of lists.
+    interactions (list): List of valid interactions (numbers 1 to 7).
+
+Returns:
+    list: Filtered matrix with updated interaction information.
+
+Raises:
+    ValueError: If matrix dimensions are invalid or if no desired interactions are found.
+"""
+def filter_by_interaction(matrix: list, interactions: list) -> list:
+
+    """
+    Validates the interactions list to ensure it contains valid numbers (1 to 7) without duplicates.
+
+    Args:
+        interactions (list): List of integers representing interactions.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If any number is outside the range 1 to 7 or if there are duplicates.
+    """
+    def validate_list(interactions: list) -> None:
+        
+        # Valid numbers are between 1 and 7
+        valid_numbers = set(range(1, 8))
+
+        # Check if all numbers in the list are valid
+        for num in interactions:
+            if num not in valid_numbers:
+                raise ValueError(f"The number {num} is not valid. It should be a number from 1 to 7.")
+
+        # Check for duplicates in the list
+        if len(set(interactions)) != len(interactions):
+            raise ValueError("The list should not contain duplicate numbers.")
+
+    # Validate matrix dimensions
+    verify_dimensions(matrix=matrix)
+
+    # Ensure the interactions list is valid
+    validate_list(lst=interactions)
+
+    # Flag to track if any changes were made in the matrix
+    changes = False
+
+    # Iterate through each cell in the matrix
+    for i in range(1, len(matrix)):
+        for j in range(1, len(matrix[i])):
+            cell = matrix[i][j]
+            
+            # Process non-empty cells
+            if cell != '-':
+                sections = cell.split(", ")
+                cell = ""
+                
+                # Iterate through each section in the cell
+                for section in sections:
+                    # Check if the first number in the section is in the valid interactions
+                    if int(section.split(" ")[0]) in interactions:
+                        if cell == '':
+                            cell = section
+                        else:
+                            cell += ', ' + section
+                        changes = True
+                
+                # Update the matrix cell based on filtered sections
+                if cell == '':
+                    matrix[i][j] = '-'
+                else:
+                    matrix[i][j] = cell
+    
+    # If no changes were made, raise an error
+    if not changes:
+        raise ValueError("The matrix does not have any of the desired interactions.")
+
+    return matrix
