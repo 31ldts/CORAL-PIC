@@ -82,7 +82,7 @@ Returns:
 Raises:
     FileNotFoundError: If the specified directory does not exist or cannot be accessed.
 """
-def analyze_files(directory: str, protein: bool, ligand: bool) -> list:
+def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit: bool=True) -> list:
 
     """
     Labels the matrix with residue names and file names for clarity.
@@ -166,6 +166,8 @@ def analyze_files(directory: str, protein: bool, ligand: bool) -> list:
                 if len(elements) == 10:
                     interaction = elements[0].strip().replace("\t", "")
                     residue = elements[3].strip().replace("\t", "")
+                    if not subunit:
+                        residue = residue.split("-")[0]
                     
                     # Determine which atoms to include based on flags
                     if protein and ligand:
@@ -344,4 +346,3 @@ def plot_matrix(matrix: list, plotName: str, axis:str, labelX: str=None, labelY:
     
     # Save the plot as a PNG file
     plt.savefig(os.path.join(saving_directory, plotName + '.png'))
-    
