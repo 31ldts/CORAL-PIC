@@ -379,8 +379,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         bars = []
         data, indices = stack_reactives(matrix, axis)
         labels = [
-            "Ionic_LIG", "Ionic_PROT", "HBond_LIG", "HBond_PROT",
-            "Aromatic_Edge/Face", "Aromatic_Face/Face", "Hydrophobic"
+            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG"
         ]
 
         transposed_data = transpose_matrix(data)

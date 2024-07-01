@@ -58,7 +58,7 @@ removed = select_reactives(matrix=matrix, threshold = 15, axis="columns")
 removed = select_reactives(matrix=matrix, threshold = 15, axis="rows")
 #save_matrix(matrix=removed, filename='cdu04 (rows).csv')
 
-plot_matrix(matrix=matrix, plot_name="cdu05 (Original)", axis="columns", label_x="Drugs", label_y="Interactions", title="Interactions of the drugs", stacked=False, save=False)
+plot_matrix(matrix=matrix, plot_name="cdu05 (Original)", axis="columns", label_x="Drugs", label_y="Interactions", title="Interactions of the drugs", stacked=True, save=False)
 #plot_matrix(matrix=removed, plotName="cdu05 (Removed Rows)", axis="rows", labelX="Residue", labelY="Interactions", title="Interactions of the residues that are over the threshold")
 
 filtered = filter_by_interaction(matrix=matrix, interactions=[5])
