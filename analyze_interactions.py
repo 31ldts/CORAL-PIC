@@ -3,6 +3,8 @@ import os
 from matplotlib import pyplot as plt
 from files_mediator import *
 from typing import Union
+import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 saving_directory = os.getcwd()
 
@@ -199,29 +201,6 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
     return label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files)
 
 """
-Counts the number of interactions in a cell of formatted interaction data.
-
-Args:
-    cell (str): The cell containing interaction data formatted with '|' separators.
-
-Returns:
-    int: The total number of interactions found in the cell.
-
-Example:
-    If cell = "1 |atom1|, 2 |atom2|, 3 |atom3|", get_interactions(cell) returns 3.
-"""
-def get_interactions(cell: str) -> int:
-    interactions = 0
-    sections = cell.split("|")
-    
-    # Iterate over every other section starting from the second one
-    for index in range(1, len(sections), 2):
-        # Split the section by spaces and count the number of elements
-        interactions += len(sections[index].split(" "))
-    
-    return interactions
-
-"""
 Verifies the dimensions of the matrix to ensure it contains at least 2 rows and 2 columns.
 
 Args:
@@ -274,6 +253,29 @@ Example:
 
 """
 def select_reactives(matrix: list, axis: str, threshold: int=None, selectedItems:int =None) -> list:
+    """
+    Counts the number of interactions in a cell of formatted interaction data.
+
+    Args:
+        cell (str): The cell containing interaction data formatted with '|' separators.
+
+    Returns:
+        int: The total number of interactions found in the cell.
+
+    Example:
+        If cell = "1 |atom1|, 2 |atom2|, 3 |atom3|", get_interactions(cell) returns 3.
+    """
+    def get_interactions(cell: str) -> int:
+        interactions = 0
+        sections = cell.split("|")
+        
+        # Iterate over every other section starting from the second one
+        for index in range(1, len(sections), 2):
+            # Split the section by spaces and count the number of elements
+            interactions += len(sections[index].split(" "))
+        
+        return interactions
+    
     verify_dimensions(matrix=matrix)
 
     if threshold is not None and selectedItems is not None:
@@ -312,40 +314,107 @@ Plots a bar chart based on selected rows or columns of a matrix and saves it as 
 
 Args:
     matrix (list of lists): The matrix containing interaction data.
-    plotName (str): The name of the plot to be saved (without extension).
+    plot_name (str): The name of the plot to be saved (without extension).
     axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-    labelX (str, optional): Label for the X-axis.
-    labelY (str, optional): Label for the Y-axis.
-    title (str, optional): Title of the plot.
+    label_x (str): Label for the X-axis.
+    label_y (str): Label for the Y-axis.
+    title (str): Title of the plot.
+    stacked (bool): If True, the bars will be stacked. Default is False.
+    save (bool): If True, the plot will be saved as a PNG file. Default is False.
 
 Returns:
     None
 
-Example:
-    If matrix = [['', 'file1', 'file2'], ['residue1', '1 |atom1|, 2 |atom2|']], 
-    plot_matrix(matrix, 'interaction_plot', 'rows', labelX='Residues', labelY='Interactions', 
-                title='Interactions per Residue')
-
 """
-def plot_matrix(matrix: list, plotName: str, axis:str, labelX: str=None, labelY: str=None, title: str=None) -> None:
-    global saving_directory
-    data = select_reactives(matrix, axis)
+def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = None, title: str = None, stacked: bool = False, save: bool = False) -> None:
+    
+    """
+    Extracts and counts interactions from a cell string.
+
+    Args:
+        cell (str): The cell string containing interaction data.
+
+    Returns:
+        list: A list of interaction counts for each interaction type.
+    """
+    def get_interactions(cell: str) -> list:
+        interactions = [0] * 7
+        sections = cell.split("|")
+        for index in range(1, len(sections), 2):
+            interaction = int(sections[index - 1].replace(" ", "").replace(",", ""))
+            interactions[interaction - 1] += len(sections[index].split(" "))
+        return interactions
+
+    """
+    Accumulates interaction counts for rows or columns and returns the stacked data.
+
+    Args:
+        matrix (list of lists): The matrix containing interaction data.
+        axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+
+    Returns:
+        tuple: A tuple containing the stacked data and indices.
+    """
+    def stack_reactives(matrix: list, axis: str) -> tuple[list, list]:
+        verify_dimensions(matrix)
+        if axis == 'columns':
+            matrix = transpose_matrix(matrix)
+        
+        reactives = {row: [0] * 7 for row in range(1, len(matrix))}
+        indices = [matrix[row][0] for row in range(1, len(matrix))]
+        
+        for row in range(1, len(matrix)):
+            for column in range(1, len(matrix[row])):
+                cell = matrix[row][column]
+                interactions = get_interactions(cell)
+                for i in range(7):
+                    reactives[row][i] += interactions[i]
+
+        result_list = list(reactives.values())
+        return result_list, indices
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.set_ylabel(labelY)
-    ax.set_xlabel(labelX)
+
+    if stacked:
+        bars = []
+        data, indices = stack_reactives(matrix, axis)
+        labels = [
+            "Ionic_LIG", "Ionic_PROT", "HBond_LIG", "HBond_PROT",
+            "Aromatic_Edge/Face", "Aromatic_Face/Face", "Hydrophobic"
+        ]
+
+        transposed_data = transpose_matrix(data)
+        bottoms = [0] * len(indices)
+        for index, group in enumerate(transposed_data):
+            bars.append(ax.bar(indices, group, bottom=bottoms, label=labels[index]))
+            bottoms = [i + j for i, j in zip(bottoms, group)]
+
+        ax.set_xticks(range(len(indices)))
+        ax.set_xticklabels(indices)
+        ax.legend()
+
+        max_y = max([sum(col) for col in data])
+    else:
+        data = select_reactives(matrix, axis)
+        ax.bar(data[0], data[1])
+        
+        max_y = max(data[1])
+    
+    ax.set_ylim(0, max_y * 1.1)
+
+    ax.set_ylabel(label_y)
+    ax.set_xlabel(label_x)
     ax.set_title(title)
 
-    ax.bar(data[0], data[1])
-    
-    # Rotate X-axis labels to prevent overlap
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
     plt.xticks(rotation=90, ha='center')
-    
-    # Adjust layout to prevent labels from being cut off
     plt.tight_layout()
-    
-    # Save the plot as a PNG file
-    plt.savefig(os.path.join(saving_directory, plotName + '.png'))
+
+    if not save:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
 
 """
 Filters the matrix based on specified interactions.
@@ -392,7 +461,7 @@ def filter_by_interaction(matrix: list, interactions: list) -> list:
     verify_dimensions(matrix=matrix)
 
     # Ensure the interactions list is valid
-    validate_list(lst=interactions)
+    validate_list(interactions=interactions)
 
     # Flag to track if any changes were made in the matrix
     changes = False
