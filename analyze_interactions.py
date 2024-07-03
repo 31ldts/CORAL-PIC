@@ -1,10 +1,10 @@
 import csv
 import os
 from matplotlib import pyplot as plt
-from files_mediator import *
 from typing import Union
 import numpy as np
 from matplotlib.ticker import MaxNLocator
+import mplcursors
 
 saving_directory = os.getcwd()
 
@@ -126,7 +126,7 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
             "Ionic_PROT": '6',
             "Ionic_LIG": '7'
         }
-        interaction = interaction_map.get(interaction, interaction)
+        interaction = interaction_map.get(interaction, '8')
 
         if text == "-":
             return f"{interaction} |{atoms}|"
@@ -155,6 +155,35 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
             cell += f", {interaction} |{atoms}|"
         return cell
 
+    """
+    Reads the content of a text file and returns it as a list of strings, with each string representing a line from the file.
+
+    Args:
+        file_name (str): The name of the text file to read.
+
+    Returns:
+        list: A list containing each line of the file as a string.
+
+    Raises:
+        FileNotFoundError: If the specified file does not exist.
+        Exception: For any other unexpected errors during file reading.
+    """
+    def read_txt_file(file_name: str) -> list:
+        string_list = []  # Initialize an empty list to store lines of the file
+        try:
+            with open(file_name, 'r') as file:
+                lines = file.readlines()
+                for line in lines:
+                    string_list.append(line.strip())  # Remove newline character and add the line to the list
+        except FileNotFoundError:
+            print(f"Error: The file '{file_name}' does not exist.")
+            raise  # Raise the error to notify the caller
+        except Exception as e:
+            print(f"Error: An unexpected error occurred while reading '{file_name}': {e}")
+            raise  # Raise the error to notify the caller
+
+        return string_list
+
     files = os.listdir(directory)
     matrix = []
     aa = {}
@@ -162,7 +191,7 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
     for index, file in enumerate(files):
         file_path = os.path.join(directory, file)
         if os.path.isfile(file_path):
-            content = read_txt_file(file_path)  # Assume read_txt_file is defined elsewhere
+            content = read_txt_file(file_path)
             for line in content:
                 elements = line.split("|")
                 if len(elements) == 10:
@@ -232,27 +261,23 @@ def transpose_matrix(matrix: list):
     return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
 """
-Selects reactive rows or columns from a matrix based on interactions.
+Sorts and selects reactive rows or columns from a matrix based on interactions.
 
 Args:
     matrix (list of lists): The matrix containing interaction data.
     axis (str): Specifies whether to select rows ('rows') or columns ('columns').
     threshold (int, optional): Minimum number of interactions to select a row/column.
-    selectedItems (int, optional): Number of top rows/columns to select based on interactions.
+    selected_items (int, optional): Number of top rows/columns to select based on interactions.
+    count (bool, optional): If True, returns counts of interactions instead of the matrix.
 
 Returns:
     list of lists: Selected rows or columns from the matrix based on the specified criteria.
 
 Raises:
-    ValueError: If both threshold and selectedItems are provided simultaneously.
+    ValueError: If both threshold and selected_items are provided simultaneously.
     ValueError: If the matrix dimensions are insufficient.
-
-Example:
-    If matrix = [['', 'file1', 'file2'], ['residue1', '1 |atom1|, 2 |atom2|', '3 |atom3|, 4 |atom4|']], 
-    select_reactives(matrix, 'rows', threshold=2) returns [['', 'file1', 'file2'], ['residue1', '1 |atom1|, 2 |atom2|']].
-
 """
-def select_reactives(matrix: list, axis: str, threshold: int=None, selectedItems:int =None) -> list:
+def sort_reactives(matrix: list, axis: str, threshold: int=None, selected_items: int=None, count: bool=False) -> list:
     """
     Counts the number of interactions in a cell of formatted interaction data.
 
@@ -261,25 +286,18 @@ def select_reactives(matrix: list, axis: str, threshold: int=None, selectedItems
 
     Returns:
         int: The total number of interactions found in the cell.
-
-    Example:
-        If cell = "1 |atom1|, 2 |atom2|, 3 |atom3|", get_interactions(cell) returns 3.
     """
     def get_interactions(cell: str) -> int:
         interactions = 0
         sections = cell.split("|")
-        
-        # Iterate over every other section starting from the second one
         for index in range(1, len(sections), 2):
-            # Split the section by spaces and count the number of elements
             interactions += len(sections[index].split(" "))
-        
         return interactions
     
     verify_dimensions(matrix=matrix)
 
-    if threshold is not None and selectedItems is not None:
-        raise ValueError("You cannot select by 'threshold' and by 'selectedItems' at the same time.")
+    if threshold is not None and selected_items is not None:
+        raise ValueError("You cannot select by 'threshold' and by 'selected_items' at the same time.")
 
     if axis == 'columns':
         matrix = transpose_matrix(matrix=matrix)
@@ -291,16 +309,18 @@ def select_reactives(matrix: list, axis: str, threshold: int=None, selectedItems
             interactions = get_interactions(cell)
             reactives[row] = reactives.get(row, 0) + interactions
     
-    if threshold is None and selectedItems is None:
+    if count:
         data = [list(reactives.keys()), list(reactives.values())]
         for index in reactives.keys():
             data[0][index-1] = matrix[index][0]
         return data
+    elif threshold is None and selected_items is None:
+        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)]
     elif threshold is not None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= threshold]
     else:
-        selectedItems = selectedItems if selectedItems < len(matrix) else len(matrix)
-        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selectedItems]]
+        selected_items = selected_items if selected_items < len(matrix) else len(matrix)
+        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selected_items]]
 
     selection = [matrix[0]] + [matrix[row] for row in reactives]
 
@@ -316,17 +336,21 @@ Args:
     matrix (list of lists): The matrix containing interaction data.
     plot_name (str): The name of the plot to be saved (without extension).
     axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-    label_x (str): Label for the X-axis.
-    label_y (str): Label for the Y-axis.
-    title (str): Title of the plot.
-    stacked (bool): If True, the bars will be stacked. Default is False.
-    save (bool): If True, the plot will be saved as a PNG file. Default is False.
+    label_x (str, optional): Label for the X-axis. Defaults to "PDB complexes".
+    label_y (str, optional): Label for the Y-axis. Defaults to "Number of intermolecular interactions".
+    title (str, optional): Title of the plot. Defaults to "Protein-drug interactions".
+    stacked (bool, optional): If True, creates a stacked bar chart. Defaults to False.
+    save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
 
 Returns:
     None
 
+Example:
+    If matrix = [['', 'file1', 'file2'], ['residue1', '1 |atom1|, 2 |atom2|']],
+    plot_matrix(matrix, 'interaction_plot', 'rows', label_x='Residues', label_y='Interactions',
+                title='Interactions per Residue')
 """
-def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = None, title: str = None, stacked: bool = False, save: bool = False) -> None:
+def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB complexes", label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False) -> None:
     
     """
     Extracts and counts interactions from a cell string.
@@ -338,7 +362,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         list: A list of interaction counts for each interaction type.
     """
     def get_interactions(cell: str) -> list:
-        interactions = [0] * 7
+        interactions = [0] * 8
         sections = cell.split("|")
         for index in range(1, len(sections), 2):
             interaction = int(sections[index - 1].replace(" ", "").replace(",", ""))
@@ -356,30 +380,31 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         tuple: A tuple containing the stacked data and indices.
     """
     def stack_reactives(matrix: list, axis: str) -> tuple[list, list]:
-        verify_dimensions(matrix)
+        verify_dimensions(matrix=matrix)
         if axis == 'columns':
             matrix = transpose_matrix(matrix)
         
-        reactives = {row: [0] * 7 for row in range(1, len(matrix))}
+        reactives = {row: [0] * 8 for row in range(1, len(matrix))}
         indices = [matrix[row][0] for row in range(1, len(matrix))]
         
         for row in range(1, len(matrix)):
             for column in range(1, len(matrix[row])):
                 cell = matrix[row][column]
                 interactions = get_interactions(cell)
-                for i in range(7):
+                for i in range(8):
                     reactives[row][i] += interactions[i]
 
         result_list = list(reactives.values())
         return result_list, indices
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    # Create a new figure
+    fig, ax = plt.subplots(num=plot_name, figsize=(12, 6))
 
     if stacked:
         bars = []
         data, indices = stack_reactives(matrix, axis)
         labels = [
-            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG"
+            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", "Unknown_Interaction"
         ]
 
         transposed_data = transpose_matrix(data)
@@ -390,11 +415,11 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
 
         ax.set_xticks(range(len(indices)))
         ax.set_xticklabels(indices)
-        ax.legend()
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
 
         max_y = max([sum(col) for col in data])
     else:
-        data = select_reactives(matrix, axis)
+        data = sort_reactives(matrix, axis, count=True)
         ax.bar(data[0], data[1])
         
         max_y = max(data[1])
@@ -410,10 +435,24 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
     plt.xticks(rotation=90, ha='center')
     plt.tight_layout()
 
+    # Add interactive cursors to display percentages for stacked bars
+    if stacked:
+        cursor = mplcursors.cursor(bars, hover=True)
+
+        @cursor.connect("add")
+        def on_add(sel):
+            index = sel.index
+            total = sum(transposed_data[i][index] for i in range(len(transposed_data)))
+            percentages = [transposed_data[i][index] / total * 100 if total != 0 else 0 for i in range(len(transposed_data))]
+            annotation_text = "\n".join([f"{labels[i]}: {percentages[i]:.1f}%" for i in range(len(labels))])
+            sel.annotation.set_text(annotation_text)
+            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
+
     if not save:
         plt.show()
     else:
         plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
+        plt.close(fig)  # Close the figure after saving to avoid display overlap
 
 """
 Filters the matrix based on specified interactions.
