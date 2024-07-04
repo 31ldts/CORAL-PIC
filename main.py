@@ -25,7 +25,7 @@ removed = sort_reactives(matrix=matrix, axis="columns")
 #save_matrix(matrix=removed, filename='cdu04 (rows).csv')
 
 plot_matrix(matrix=matrix, plot_name="cdu05 (Original)", axis="columns", stacked=True, save=False)
-plot_matrix(matrix=removed, plot_name="cdu05 (Removed Rows)", axis="columns", stacked=True, save=False)
+#plot_matrix(matrix=removed, plot_name="cdu05 (Removed Rows)", axis="columns", stacked=True, save=False)
 
 filtered = filter_by_interaction(matrix=matrix, interactions=[5])
 #save_matrix(matrix=matrix, filename='cdu08 (5).csv')
