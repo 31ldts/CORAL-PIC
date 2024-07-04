@@ -8,20 +8,19 @@ import mplcursors
 
 saving_directory = os.getcwd()
 
-"""
-Changes the saving directory to a subdirectory within the current directory.
-
-Args:
-    path (str): The name of the subdirectory to change to.
-
-Returns:
-    None
-
-Raises:
-    ValueError: If the subdirectory does not exist.
-"""
 def change_directory(path: str) -> None:
+    """
+    Changes the saving directory to a subdirectory within the current directory.
 
+    Args:
+        path (str): The name of the subdirectory to change to.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the subdirectory does not exist.
+    """
     global saving_directory
 
     # Get the full path of the new saving directory
@@ -31,32 +30,33 @@ def change_directory(path: str) -> None:
     if not os.path.exists(saving_directory):
         raise ValueError("The saving directory must exist inside the project.")
 
-"""
-Transposes the given matrix.
 
-Args:
-    matrix (list of lists): The matrix to transpose.
-
-Returns:
-    list of lists: The transposed matrix.
-"""
 def transpose_matrix(matrix: list) -> list:
+    """
+    Transposes the given matrix.
+
+    Args:
+        matrix (list of lists): The matrix to transpose.
+
+    Returns:
+        list of lists: The transposed matrix.
+    """
     verify_dimensions(matrix=matrix)
 
     # Use list comprehension to transpose the matrix
     return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
-"""
-Saves the matrix to a CSV file in the specified directory.
-
-Args:
-    matrix (list of lists): The matrix to be saved.
-    filename (str): The name of the file to save the matrix in.
-
-Returns:
-    None
-"""
 def save_matrix(matrix: list, filename: str) -> None:
+    """
+    Saves the matrix to a CSV file in the specified directory.
+
+    Args:
+        matrix (list of lists): The matrix to be saved.
+        filename (str): The name of the file to save the matrix in.
+
+    Returns:
+        None
+    """
     global saving_directory
 
     verify_dimensions(matrix=matrix)
@@ -69,53 +69,53 @@ def save_matrix(matrix: list, filename: str) -> None:
         for row in matrix:
             csv_writer.writerow(row)
 
-"""
-Analyzes interaction data files in a specified directory, categorizing interactions
-based on protein and ligand atoms involved.
-
-Args:
-    directory (str): The directory path containing interaction data files.
-    protein (bool): Flag indicating whether to include protein atoms in analysis.
-    ligand (bool): Flag indicating whether to include ligand atoms in analysis.
-
-Returns:
-    list: A matrix representing categorized interactions between residues and files.
-
-Raises:
-    FileNotFoundError: If the specified directory does not exist or cannot be accessed.
-"""
 def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit: bool=True) -> list:
-
     """
-    Labels the matrix with residue names and file names for clarity.
+    Analyzes interaction data files in a specified directory, categorizing interactions
+    based on protein and ligand atoms involved.
 
     Args:
-        matrix (list): The 2D list representing interaction data.
-        rows (list): List of residue names.
-        columns (list): List of file names (drugs).
+        directory (str): The directory path containing interaction data files.
+        protein (bool): Flag indicating whether to include protein atoms in analysis.
+        ligand (bool): Flag indicating whether to include ligand atoms in analysis.
 
     Returns:
-        list: The labeled matrix with headers.
+        list: A matrix representing categorized interactions between residues and files.
+
+    Raises:
+        FileNotFoundError: If the specified directory does not exist or cannot be accessed.
     """
+    
     def label_matrix(matrix: list, rows: list, columns: list) -> list:
+        """
+        Labels the matrix with residue names and file names for clarity.
+
+        Args:
+            matrix (list): The 2D list representing interaction data.
+            rows (list): List of residue names.
+            columns (list): List of file names (drugs).
+
+        Returns:
+            list: The labeled matrix with headers.
+        """
         for index, row in enumerate(rows):
             matrix[index].insert(0, row.replace("\t", ""))
         columns.insert(0, "")
         matrix.insert(0, columns)
         return matrix
     
-    """
-    Modifies the cell content based on interaction type and atoms involved.
-
-    Args:
-        text (str): The current content of the cell.
-        interaction (str): The type of interaction.
-        atoms (str): The atoms involved in the interaction.
-
-    Returns:
-        str: The modified cell content with updated interaction details.
-    """
     def modify_cell(text: str, interaction: str, atoms: str) -> str:
+        """
+        Modifies the cell content based on interaction type and atoms involved.
+
+        Args:
+            text (str): The current content of the cell.
+            interaction (str): The type of interaction.
+            atoms (str): The atoms involved in the interaction.
+
+        Returns:
+            str: The modified cell content with updated interaction details.
+        """
         # Map interaction types to specific codes
         interaction_map = {
             "Hydrophobic": '1',
@@ -155,20 +155,20 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
             cell += f", {interaction} |{atoms}|"
         return cell
 
-    """
-    Reads the content of a text file and returns it as a list of strings, with each string representing a line from the file.
-
-    Args:
-        file_name (str): The name of the text file to read.
-
-    Returns:
-        list: A list containing each line of the file as a string.
-
-    Raises:
-        FileNotFoundError: If the specified file does not exist.
-        Exception: For any other unexpected errors during file reading.
-    """
     def read_txt_file(file_name: str) -> list:
+        """
+        Reads the content of a text file and returns it as a list of strings, with each string representing a line from the file.
+
+        Args:
+            file_name (str): The name of the text file to read.
+
+        Returns:
+            list: A list containing each line of the file as a string.
+
+        Raises:
+            FileNotFoundError: If the specified file does not exist.
+            Exception: For any other unexpected errors during file reading.
+        """
         string_list = []  # Initialize an empty list to store lines of the file
         try:
             with open(file_name, 'r') as file:
@@ -229,65 +229,66 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
 
     return label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files)
 
-"""
-Verifies the dimensions of the matrix to ensure it contains at least 2 rows and 2 columns.
-
-Args:
-    matrix (list of lists): The matrix to be verified.
-
-Raises:
-    ValueError: If the matrix has fewer than 2 rows or any row has fewer than 2 columns.
-
-Example:
-    If matrix = [['-', '1'], ['2', '-']], verify_dimensions(matrix) will pass.
-"""
 def verify_dimensions(matrix: list):
+    """
+    Verifies the dimensions of the matrix to ensure it contains at least 2 rows and 2 columns.
+
+    Args:
+        matrix (list of lists): The matrix to be verified.
+
+    Raises:
+        ValueError: If the matrix has fewer than 2 rows or any row has fewer than 2 columns.
+
+    Example:
+        If matrix = [['-', '1'], ['2', '-']], verify_dimensions(matrix) will pass.
+    """
     if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
         raise ValueError("There are not interactions on the matrix.")
 
-"""
-Transposes a given matrix.
-
-Args:
-    matrix (list of lists): The matrix to be transposed.
-
-Returns:
-    list of lists: The transposed matrix.
-
-Example:
-    If matrix = [[1, 2, 3], [4, 5, 6]], transpose_matrix(matrix) returns [[1, 4], [2, 5], [3, 6]].
-"""
 def transpose_matrix(matrix: list):
-    return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
-
-"""
-Sorts and selects reactive rows or columns from a matrix based on interactions.
-
-Args:
-    matrix (list of lists): The matrix containing interaction data.
-    axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-    threshold (int, optional): Minimum number of interactions to select a row/column.
-    selected_items (int, optional): Number of top rows/columns to select based on interactions.
-    count (bool, optional): If True, returns counts of interactions instead of the matrix.
-
-Returns:
-    list of lists: Selected rows or columns from the matrix based on the specified criteria.
-
-Raises:
-    ValueError: If both threshold and selected_items are provided simultaneously.
-    ValueError: If the matrix dimensions are insufficient.
-"""
-def sort_reactives(matrix: list, axis: str, threshold: int=None, selected_items: int=None, count: bool=False) -> list:
     """
-    Counts the number of interactions in a cell of formatted interaction data.
+    Transposes a given matrix.
 
     Args:
-        cell (str): The cell containing interaction data formatted with '|' separators.
+        matrix (list of lists): The matrix to be transposed.
 
     Returns:
-        int: The total number of interactions found in the cell.
+        list of lists: The transposed matrix.
+
+    Example:
+        If matrix = [[1, 2, 3], [4, 5, 6]], transpose_matrix(matrix) returns [[1, 4], [2, 5], [3, 6]].
     """
+    return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
+
+def sort_reactives(matrix: list, axis: str, threshold: int=None, selected_items: int=None, count: bool=False) -> list:
+    """
+    Sorts and selects reactive rows or columns from a matrix based on interactions.
+
+    Args:
+        matrix (list of lists): The matrix containing interaction data.
+        axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+        threshold (int, optional): Minimum number of interactions to select a row/column.
+        selected_items (int, optional): Number of top rows/columns to select based on interactions.
+        count (bool, optional): If True, returns counts of interactions instead of the matrix.
+
+    Returns:
+        list of lists: Selected rows or columns from the matrix based on the specified criteria.
+
+    Raises:
+        ValueError: If both threshold and selected_items are provided simultaneously.
+        ValueError: If the matrix dimensions are insufficient.
+    """
+
     def get_interactions(cell: str) -> int:
+        """
+        Counts the number of interactions in a cell of formatted interaction data.
+
+        Args:
+            cell (str): The cell containing interaction data formatted with '|' separators.
+
+        Returns:
+            int: The total number of interactions found in the cell.
+        """
         interactions = 0
         sections = cell.split("|")
         for index in range(1, len(sections), 2):
@@ -329,39 +330,40 @@ def sort_reactives(matrix: list, axis: str, threshold: int=None, selected_items:
 
     return selection
 
-"""
-Plots a bar chart based on selected rows or columns of a matrix and saves it as a PNG file.
-
-Args:
-    matrix (list of lists): The matrix containing interaction data.
-    plot_name (str): The name of the plot to be saved (without extension).
-    axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-    label_x (str, optional): Label for the X-axis. Defaults to "PDB complexes".
-    label_y (str, optional): Label for the Y-axis. Defaults to "Number of intermolecular interactions".
-    title (str, optional): Title of the plot. Defaults to "Protein-drug interactions".
-    stacked (bool, optional): If True, creates a stacked bar chart. Defaults to False.
-    save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
-
-Returns:
-    None
-
-Example:
-    If matrix = [['', 'file1', 'file2'], ['residue1', '1 |atom1|, 2 |atom2|']],
-    plot_matrix(matrix, 'interaction_plot', 'rows', label_x='Residues', label_y='Interactions',
-                title='Interactions per Residue')
-"""
 def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB complexes", label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False) -> None:
     
     """
-    Extracts and counts interactions from a cell string.
+    Plots a bar chart based on selected rows or columns of a matrix and saves it as a PNG file.
 
     Args:
-        cell (str): The cell string containing interaction data.
+        matrix (list of lists): The matrix containing interaction data.
+        plot_name (str): The name of the plot to be saved (without extension).
+        axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+        label_x (str, optional): Label for the X-axis. Defaults to "PDB complexes".
+        label_y (str, optional): Label for the Y-axis. Defaults to "Number of intermolecular interactions".
+        title (str, optional): Title of the plot. Defaults to "Protein-drug interactions".
+        stacked (bool, optional): If True, creates a stacked bar chart. Defaults to False.
+        save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
 
     Returns:
-        list: A list of interaction counts for each interaction type.
+        None
+
+    Example:
+        If matrix = [['', 'file1', 'file2'], ['residue1', '1 |atom1|, 2 |atom2|']],
+        plot_matrix(matrix, 'interaction_plot', 'rows', label_x='Residues', label_y='Interactions',
+                    title='Interactions per Residue')
     """
+
     def get_interactions(cell: str) -> list:
+        """
+        Extracts and counts interactions from a cell string.
+
+        Args:
+            cell (str): The cell string containing interaction data.
+
+        Returns:
+            list: A list of interaction counts for each interaction type.
+        """
         interactions = [0] * 8
         sections = cell.split("|")
         for index in range(1, len(sections), 2):
@@ -369,17 +371,17 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB com
             interactions[interaction - 1] += len(sections[index].split(" "))
         return interactions
 
-    """
-    Accumulates interaction counts for rows or columns and returns the stacked data.
-
-    Args:
-        matrix (list of lists): The matrix containing interaction data.
-        axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-
-    Returns:
-        tuple: A tuple containing the stacked data and indices.
-    """
     def stack_reactives(matrix: list, axis: str) -> tuple[list, list]:
+        """
+        Accumulates interaction counts for rows or columns and returns the stacked data.
+
+        Args:
+            matrix (list of lists): The matrix containing interaction data.
+            axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+
+        Returns:
+            tuple: A tuple containing the stacked data and indices.
+        """
         verify_dimensions(matrix=matrix)
         if axis == 'columns':
             matrix = transpose_matrix(matrix)
@@ -454,34 +456,34 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB com
         plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
         plt.close(fig)  # Close the figure after saving to avoid display overlap
 
-"""
-Filters the matrix based on specified interactions.
-
-Args:
-    matrix (list): The matrix to filter, represented as a list of lists.
-    interactions (list): List of valid interactions (numbers 1 to 7).
-
-Returns:
-    list: Filtered matrix with updated interaction information.
-
-Raises:
-    ValueError: If matrix dimensions are invalid or if no desired interactions are found.
-"""
 def filter_by_interaction(matrix: list, interactions: list) -> list:
-
     """
-    Validates the interactions list to ensure it contains valid numbers (1 to 7) without duplicates.
+    Filters the matrix based on specified interactions.
 
     Args:
-        interactions (list): List of integers representing interactions.
+        matrix (list): The matrix to filter, represented as a list of lists.
+        interactions (list): List of valid interactions (numbers 1 to 7).
 
     Returns:
-        None
+        list: Filtered matrix with updated interaction information.
 
     Raises:
-        ValueError: If any number is outside the range 1 to 7 or if there are duplicates.
+        ValueError: If matrix dimensions are invalid or if no desired interactions are found.
     """
+
     def validate_list(interactions: list) -> None:
+        """
+        Validates the interactions list to ensure it contains valid numbers (1 to 7) without duplicates.
+
+        Args:
+            interactions (list): List of integers representing interactions.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If any number is outside the range 1 to 7 or if there are duplicates.
+        """
         
         # Valid numbers are between 1 and 7
         valid_numbers = set(range(1, 8))
