@@ -259,7 +259,7 @@ def transpose_matrix(matrix: list):
     """
     return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
-def sort_matrix(matrix: list, axis: str, threshold: int=None, selected_items: int=None, count: bool=False) -> list:
+def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_items: int=None, count: bool=False) -> list:
     """
     Sorts and selects reactive rows or columns from a matrix based on interactions.
 
@@ -296,7 +296,7 @@ def sort_matrix(matrix: list, axis: str, threshold: int=None, selected_items: in
     
     verify_dimensions(matrix=matrix)
 
-    if threshold is not None and selected_items is not None:
+    if thr_interactions is not None and selected_items is not None:
         raise ValueError("You cannot select by 'threshold' and by 'selected_items' at the same time.")
 
     if axis == 'columns':
@@ -314,10 +314,10 @@ def sort_matrix(matrix: list, axis: str, threshold: int=None, selected_items: in
         for index in reactives.keys():
             data[0][index-1] = matrix[index][0]
         return data
-    elif threshold is None and selected_items is None:
+    elif thr_interactions is None and selected_items is None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)]
-    elif threshold is not None:
-        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= threshold]
+    elif thr_interactions is not None:
+        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= thr_interactions]
     else:
         selected_items = selected_items if selected_items < len(matrix) else len(matrix)
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selected_items]]
@@ -405,7 +405,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB com
         bars = []
         data, indices = stack_reactives(matrix, axis)
         labels = [
-            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", "Unknown_Interaction"
+            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", "Other_Interactions"
         ]
 
         transposed_data = transpose_matrix(data)

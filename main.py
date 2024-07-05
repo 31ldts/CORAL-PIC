@@ -2,13 +2,13 @@ from analyze_interactions import *
 
 change_directory("outputs")
 
-matrix = analyze_files(directory="structures", protein=True, ligand=True)
+matrix = analyze_files(directory="ichem-ifp", protein=True, ligand=True)
 #save_matrix(matrix=matrix, filename='cdu01 (prot-lig).csv')
-matrix = analyze_files(directory="structures", protein=True, ligand=True, subunit=False)
+matrix = analyze_files(directory="ichem-ifp", protein=True, ligand=True, subunit=False)
 #save_matrix(matrix=matrix, filename='cdu01 (prot-lig (without subunits)).csv')
-matrix = analyze_files(directory="structures", protein=True, ligand=False)
+matrix = analyze_files(directory="ichem-ifp", protein=True, ligand=False)
 #save_matrix(matrix=matrix, filename='cdu01 (prot).csv')
-matrix = analyze_files(directory="structures", protein=False, ligand=True)
+matrix = analyze_files(directory="ichem-ifp", protein=False, ligand=True)
 #save_matrix(matrix=matrix, filename='cdu01 (lig).csv')
 
 selection = sort_matrix(matrix=matrix, axis='columns')
@@ -19,7 +19,7 @@ selection = sort_matrix(matrix=matrix, selected_items=5, axis='rows')
 transposed = transpose_matrix(matrix=selection)
 #save_matrix(matrix=transposed, filename='cdu03.csv')
 
-removed = sort_matrix(matrix=matrix, threshold = 15, axis="columns")
+removed = sort_matrix(matrix=matrix, thr_interactions = 15, axis="columns")
 #save_matrix(matrix=removed, filename='cdu04 (cols).csv')
 removed = sort_matrix(matrix=matrix, axis="columns")
 #save_matrix(matrix=removed, filename='cdu04 (rows).csv')
