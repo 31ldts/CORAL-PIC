@@ -5,6 +5,7 @@ from typing import Union
 import numpy as np
 from matplotlib.ticker import MaxNLocator
 import mplcursors
+import copy
 
 saving_directory = os.getcwd()
 
@@ -243,21 +244,6 @@ def verify_dimensions(matrix: list):
     """
     if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
         raise ValueError("There are not interactions on the matrix.")
-
-def transpose_matrix(matrix: list):
-    """
-    Transposes a given matrix.
-
-    Args:
-        matrix (list of lists): The matrix to be transposed.
-
-    Returns:
-        list of lists: The transposed matrix.
-
-    Example:
-        If matrix = [[1, 2, 3], [4, 5, 6]], transpose_matrix(matrix) returns [[1, 4], [2, 5], [3, 6]].
-    """
-    return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
 def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_items: int=None, count: bool=False) -> list:
     """
@@ -502,13 +488,15 @@ def filter_by_interaction(matrix: list, interactions: list) -> list:
     # Ensure the interactions list is valid
     validate_list(interactions=interactions)
 
+    filtered = copy.deepcopy(matrix)
+
     # Flag to track if any changes were made in the matrix
     changes = False
 
     # Iterate through each cell in the matrix
-    for i in range(1, len(matrix)):
-        for j in range(1, len(matrix[i])):
-            cell = matrix[i][j]
+    for i in range(1, len(filtered)):
+        for j in range(1, len(filtered[i])):
+            cell = filtered[i][j]
             
             # Process non-empty cells
             if cell != '-':
@@ -527,12 +515,12 @@ def filter_by_interaction(matrix: list, interactions: list) -> list:
                 
                 # Update the matrix cell based on filtered sections
                 if cell == '':
-                    matrix[i][j] = '-'
+                    filtered[i][j] = '-'
                 else:
-                    matrix[i][j] = cell
+                    filtered[i][j] = cell
     
     # If no changes were made, raise an error
     if not changes:
         raise ValueError("The matrix does not have any of the desired interactions.")
 
-    return matrix
+    return filtered
