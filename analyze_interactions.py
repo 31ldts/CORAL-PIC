@@ -30,7 +30,6 @@ def change_directory(path: str) -> None:
     if not os.path.exists(saving_directory):
         raise ValueError("The saving directory must exist inside the project.")
 
-
 def transpose_matrix(matrix: list) -> list:
     """
     Transposes the given matrix.
@@ -260,7 +259,7 @@ def transpose_matrix(matrix: list):
     """
     return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
-def sort_reactives(matrix: list, axis: str, threshold: int=None, selected_items: int=None, count: bool=False) -> list:
+def sort_matrix(matrix: list, axis: str, threshold: int=None, selected_items: int=None, count: bool=False) -> list:
     """
     Sorts and selects reactive rows or columns from a matrix based on interactions.
 
@@ -421,7 +420,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB com
 
         max_y = max([sum(col) for col in data])
     else:
-        data = sort_reactives(matrix, axis, count=True)
+        data = sort_matrix(matrix, axis, count=True)
         ax.bar(data[0], data[1])
         
         max_y = max(data[1])
