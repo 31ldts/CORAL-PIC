@@ -71,15 +71,17 @@ def save_matrix(matrix: list, filename: str) -> None:
         for row in matrix:
             csv_writer.writerow(row)
 
-def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit: bool=True) -> list:
+def analyze_files(directory: str, activity_file: str=None, protein: bool=True, ligand: bool=True, subunit: bool=True) -> list:
     """
     Analyzes interaction data files in a specified directory, categorizing interactions
     based on protein and ligand atoms involved.
 
     Args:
         directory (str): The directory path containing interaction data files.
+        activity_file (str): Path to activity file.
         protein (bool): Flag indicating whether to include protein atoms in analysis.
         ligand (bool): Flag indicating whether to include ligand atoms in analysis.
+        subunit (bool): Flag indicating whether to differentiate residues from different chains.
 
     Returns:
         list: A matrix representing categorized interactions between residues and files.
@@ -88,7 +90,7 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
         FileNotFoundError: If the specified directory does not exist or cannot be accessed.
     """
     
-    def label_matrix(matrix: list, rows: list, columns: list) -> list:
+    def label_matrix(matrix: list, rows: list, columns: list, activity_file: str) -> list:
         """
         Labels the matrix with residue names and file names for clarity.
 
@@ -96,14 +98,42 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
             matrix (list): The 2D list representing interaction data.
             rows (list): List of residue names.
             columns (list): List of file names (drugs).
+            activity_file (str): Path to activity file.
 
         Returns:
             list: The labeled matrix with headers.
         """
-        for index, row in enumerate(rows):
-            matrix[index].insert(0, row.replace("\t", ""))
-        columns.insert(0, "")
+        # Copy rows and columns to avoid modifying input parameters
+        rows = [row.replace("\t", "") for row in rows]
+        columns = [""] + columns[:]  # Include an empty string at the beginning
+
+        if activity_file is not None:
+            if not os.path.isfile(activity_file):
+                raise FileNotFoundError(f"The file '{activity_file}' does not exist.")
+            
+            # Read data from CSV into a dictionary
+            data_dict = {}
+            with open(activity_file, newline='') as csvfile:
+                csvreader = csv.reader(csvfile)
+                next(csvreader)  # Skip header
+                for key, value in csvreader:
+                    data_dict[key] = value
+            
+            # Update column names with data from dictionary
+            for i in range(1, len(columns)):
+                drug_name = columns[i]
+                if drug_name in data_dict:
+                    columns[i] = f"{drug_name}_{data_dict[drug_name]}"
+                else:
+                    columns[i] = f"{drug_name}_0"
+
+        # Insert columns as the first row in the matrix
         matrix.insert(0, columns)
+        
+        # Insert rows as the first element of each row in the matrix
+        for i, row in enumerate(matrix[1:], start=1):
+            row.insert(0, rows[i-1])
+        
         return matrix
     
     def modify_cell(text: str, interaction: str, atoms: str) -> str:
@@ -276,7 +306,7 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
 
     if not subunit:
         matrix = adjust_subunits(matrix=matrix, subunits=list(subunits_set))
-    return label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files)
+    return label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files, activity_file=activity_file)
 
 def verify_dimensions(matrix: list):
     """
