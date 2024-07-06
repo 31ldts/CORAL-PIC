@@ -301,15 +301,16 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
     Args:
         matrix (list of lists): The matrix containing interaction data.
         axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-        threshold (int, optional): Minimum number of interactions to select a row/column.
+        thr_interactions (int, optional): Minimum number of interactions to select a row/column.
         selected_items (int, optional): Number of top rows/columns to select based on interactions.
         count (bool, optional): If True, returns counts of interactions instead of the matrix.
+        residue_chain (bool, optional): If True, orders the resulting matrix based on the residues' order in the chain.
 
     Returns:
         list of lists: Selected rows or columns from the matrix based on the specified criteria.
 
     Raises:
-        ValueError: If both threshold and selected_items are provided simultaneously.
+        ValueError: If both thr_interactions and selected_items are provided simultaneously.
         ValueError: If the matrix dimensions are insufficient.
     """
 
@@ -330,38 +331,53 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
         return interactions
     
     def sort_by_residue(matrix: list) -> list:
+        """
+        Sorts the matrix based on the residue indices in the first column.
+
+        Args:
+            matrix (list of lists): The matrix to be sorted.
+
+        Returns:
+            list of lists: The matrix sorted by residue indices.
+        """
         # Validate matrix dimensions
         verify_dimensions(matrix=matrix)
 
-        sort = copy.deepcopy(matrix)
+        # Determine if sorting is needed by rows or columns
         axis = get_residues_axis(matrix=matrix)
-        if axis == 'columns':
-            sort = transpose_matrix(matrix=sort)
         
-        changes = True
-        while changes:
-            changes = False
-            for index in range(2, len(sort)):
-                actual = int(sort[index][0].replace(" ", "")[3:])
-                previous = int(sort[index-1][0].replace(" ", "")[3:])
-                if previous > actual:
-                    changes = True
-                    previous = sort[index-1]
-                    sort[index-1] = sort[index]
-                    sort[index] = previous
+        # If sorting is needed by columns, transpose the matrix first
         if axis == 'columns':
-            sort = transpose_matrix(matrix=sort)
-        return sort
+            matrix = transpose_matrix(matrix=matrix)
 
+        # Separate the header from the data rows
+        header = matrix[0]
+        data_rows = matrix[1:]
 
+        # Sort the data rows based on the residue indices
+        sorted_data_rows = sorted(data_rows, key=lambda row: int(row[0].replace(" ", "")[3:]))
+
+        # Combine the header with the sorted data rows
+        sorted_matrix = [header] + sorted_data_rows
+
+        # If sorting was by columns, transpose the sorted matrix back
+        if axis == 'columns':
+            sorted_matrix = transpose_matrix(matrix=sorted_matrix)
+
+        return sorted_matrix
+
+    # Validate matrix dimensions
     verify_dimensions(matrix=matrix)
 
+    # Raise an error if both thr_interactions and selected_items are provided simultaneously
     if thr_interactions is not None and selected_items is not None:
         raise ValueError("You cannot select by 'threshold' and by 'selected_items' at the same time.")
 
+    # Transpose the matrix if axis is 'columns'
     if axis == 'columns':
         matrix = transpose_matrix(matrix=matrix)
     
+    # Initialize a dictionary to store the number of interactions per row
     reactives = {}
     for row in range(1, len(matrix)):
         for column in range(1, len(matrix[row])):
@@ -369,11 +385,13 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
             interactions = get_interactions(cell)
             reactives[row] = reactives.get(row, 0) + interactions
     
+    # If count is True, return the counts of interactions instead of the matrix
     if count:
         data = [list(reactives.keys()), list(reactives.values())]
         for index in reactives.keys():
             data[0][index-1] = matrix[index][0]
         return data
+    # Select rows based on the specified criteria
     elif thr_interactions is None and selected_items is None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)]
     elif thr_interactions is not None:
@@ -382,11 +400,14 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
         selected_items = selected_items if selected_items < len(matrix) else len(matrix)
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selected_items]]
 
+    # Create the selection matrix with the selected rows
     selection = [matrix[0]] + [matrix[row] for row in reactives]
 
+    # Transpose the selection matrix back if axis was 'columns'
     if axis == 'columns':
         selection = transpose_matrix(matrix=selection)
     
+    # Sort the selection by residue chain if residue_chain is True
     if residue_chain:
         selection = sort_by_residue(matrix=selection)
 
@@ -493,7 +514,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
     ax.set_ylabel(label_y)
     if label_x is  None:
         residues_axis = get_residues_axis(matrix=matrix)
-        label_x = "Residues Names" if residues_axis == axis else "PDB complexes"
+        label_x = "Interacting protein residues" if residues_axis == axis else "PDB complexes"
     ax.set_xlabel(label_x)
     ax.set_title(title)
 
@@ -606,12 +627,34 @@ def filter_by_interaction(matrix: list, interactions: list) -> list:
     return filtered
 
 def get_residues_axis(matrix: list) -> str:
+    """
+    Determines whether the residues' axis is in the rows or columns of the matrix.
+
+    Args:
+        matrix (list of lists): The matrix containing interaction data.
+
+    Returns:
+        str: 'columns' if residues' axis is in the columns, 'rows' if residues' axis is in the rows.
+
+    Raises:
+        ValueError: If the residues' axis cannot be determined.
+    """
+    # Validate matrix dimensions
     verify_dimensions(matrix=matrix)
-    if matrix[0][1].count(' ') == matrix[1][0].count(' '):
+    
+    # Count the spaces in specific positions to determine the axis
+    count_0_1 = matrix[0][1].count(' ')
+    count_1_0 = matrix[1][0].count(' ')
+
+    # If the counts are equal, the axis cannot be determined
+    if count_0_1 == count_1_0:
         raise ValueError("Cannot determine the residues' axis.")
-    elif matrix[0][1].count(' ') == 1:
+    # If the count in the first row, second column is 1, the axis is 'columns'
+    elif count_0_1 == 1:
         return 'columns'
-    elif matrix[1][0].count(' ') == 1:
+    # If the count in the second row, first column is 1, the axis is 'rows'
+    elif count_1_0 == 1:
         return 'rows'
+    # If neither condition is met, the axis cannot be determined
     else:
         raise ValueError("Cannot determine the residues' axis.")
