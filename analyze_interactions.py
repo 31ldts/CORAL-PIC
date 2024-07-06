@@ -364,7 +364,7 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
 
     return selection
 
-def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB complexes", label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False) -> None:
+def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False) -> None:
     
     """
     Plots a bar chart based on selected rows or columns of a matrix and saves it as a PNG file.
@@ -438,7 +438,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB com
 
     if stacked:
         bars = []
-        data, indices = stack_reactives(matrix, axis)
+        data, indices = stack_reactives(matrix=matrix, axis=axis)
         labels = [
             "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", "Other_Interactions"
         ]
@@ -463,6 +463,9 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = "PDB com
     ax.set_ylim(0, max_y * 1.1)
 
     ax.set_ylabel(label_y)
+    if label_x is  None:
+        residues_axis = get_residues_axis(matrix=matrix)
+        label_x = "Residues Names" if residues_axis == axis else "PDB complexes"
     ax.set_xlabel(label_x)
     ax.set_title(title)
 
@@ -573,3 +576,14 @@ def filter_by_interaction(matrix: list, interactions: list) -> list:
         raise ValueError("The matrix does not have any of the desired interactions.")
 
     return filtered
+
+def get_residues_axis(matrix: list) -> str:
+    verify_dimensions(matrix=matrix)
+    if matrix[0][1].count(' ') == matrix[1][0].count(' '):
+        raise ValueError("Cannot determine the residues' axis.")
+    elif matrix[0][1].count(' ') == 1:
+        return 'columns'
+    elif matrix[1][0].count(' ') == 1:
+        return 'rows'
+    else:
+        raise ValueError("Cannot determine the residues' axis.")
