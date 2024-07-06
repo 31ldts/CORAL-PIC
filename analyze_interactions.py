@@ -324,7 +324,7 @@ def verify_dimensions(matrix: list):
     if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
         raise ValueError("There are not interactions on the matrix.")
 
-def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_items: int=None, count: bool=False, residue_chain: bool=False) -> list:
+def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, thr_activity: float=None, selected_items: int=None, count: bool=False, residue_chain: bool=False) -> list:
     """
     Sorts and selects reactive rows or columns from a matrix based on interactions.
 
@@ -401,8 +401,12 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
 
     # Raise an error if both thr_interactions and selected_items are provided simultaneously
     if thr_interactions is not None and selected_items is not None:
-        raise ValueError("You cannot select by 'threshold' and by 'selected_items' at the same time.")
-
+        raise ValueError("You cannot select by 'thr_interactions' and by 'selected_items' at the same time.")
+    if thr_interactions is not None and thr_activity is not None:
+        raise ValueError("You cannot select by 'thr_interactions' and by 'thr_activity' at the same time.")
+    if thr_activity is not None and selected_items is not None:
+        raise ValueError("You cannot select by 'thr_activity' and by 'selected_items' at the same time.")
+    
     # Transpose the matrix if axis is 'columns'
     if axis == 'columns':
         matrix = transpose_matrix(matrix=matrix)
@@ -419,16 +423,21 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
     if count:
         data = [list(reactives.keys()), list(reactives.values())]
         for index in reactives.keys():
-            data[0][index-1] = matrix[index][0]
+            original_value = matrix[index][0]
+            split_value = original_value.split('_')[0].strip()  # Aplica split y elimina espacios en blanco
+            data[0][index-1] = split_value
         return data
     # Select rows based on the specified criteria
-    elif thr_interactions is None and selected_items is None:
-        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)]
     elif thr_interactions is not None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= thr_interactions]
-    else:
+    elif get_residues_axis(matrix) == "columns" and thr_activity is not None:
+        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: float(matrix[item[0]][0].split("_")[1]), reverse=True) if float(matrix[key][0].split("_")[1]) >= thr_activity]
+    elif selected_items:
         selected_items = selected_items if selected_items < len(matrix) else len(matrix)
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selected_items]]
+    else:
+        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)]
+    
 
     # Create the selection matrix with the selected rows
     selection = [matrix[0]] + [matrix[row] for row in reactives]
@@ -500,7 +509,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
             matrix = transpose_matrix(matrix)
         
         reactives = {row: [0] * 8 for row in range(1, len(matrix))}
-        indices = [matrix[row][0] for row in range(1, len(matrix))]
+        indices = [matrix[row][0].split('_')[0].strip() for row in range(1, len(matrix))]
         
         for row in range(1, len(matrix)):
             for column in range(1, len(matrix[row])):
