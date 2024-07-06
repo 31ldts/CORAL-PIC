@@ -6,6 +6,8 @@ import numpy as np
 from matplotlib.ticker import MaxNLocator
 import mplcursors
 import copy
+from collections import Counter
+import re
 
 saving_directory = os.getcwd()
 
@@ -184,10 +186,52 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
 
         return string_list
 
+    def adjust_subunits(matrix: list, subunits: list) -> list:
+        def reduce_strings_in_even_indices(atoms, subunits):
+            pattern = r'[() ]'
+            result = list(filter(None, re.split(pattern, atoms)))
+            # Filtrar las celdas con índice par
+            even_index_strings = [result[i] for i in range(0, len(result), 2)]
+            
+            # Contar las apariciones de cada string
+            string_count = Counter(even_index_strings)
+            
+            # Crear una nueva lista manteniendo solo una aparición de cada string
+            # que aparece en índices pares si aparece más de 3 veces
+            text = ''
+            added_strings = set()
+            
+            for i in range(len(result)):
+                string = result[i]
+                if i % 2 == 0:  # Índice par
+                    if string_count[string] >= subunits:
+                        if string not in added_strings:
+                            text = text + string + " "
+                            added_strings.add(string)
+                        # No agregamos el string si ya fue agregado
+                    else:
+                        text = text + string+'('+result[i+1]+') '
+            
+            return '|' + text[:-1] + '|'
+        
+        for row in range(len(matrix)):
+            for column in range(len(matrix[row])):
+                cell = matrix[row][column]
+                text = ''
+                if cell != '-':
+                    sections = cell.split("|")
+                    for i in range(1, len(sections), 2):
+                        # Dividir segun '|' y quedarme con los impares
+                        text = text + sections[i-1] + reduce_strings_in_even_indices(atoms=sections[i], subunits=len(subunits)) + ' '
+                        # Diccionario
+                    matrix[row][column] = text[:-1]
+        return matrix
+
     files = os.listdir(directory)
     matrix = []
     aa = {}
     cont = 0
+    subunits_set = set()
     for index, file in enumerate(files):
         file_path = os.path.join(directory, file)
         if os.path.isfile(file_path):
@@ -198,17 +242,20 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
                     interaction = elements[0].strip().replace("\t", "")
                     residue = elements[3].strip().replace("\t", "")
                     if not subunit:
-                        residue = residue.split("-")[0]
+                        sections = residue.split("-")
+                        residue = sections[0]
+                        subunits_set.add(sections[1])
                     
                     # Determine which atoms to include based on flags
                     if protein and ligand:
                         atoms = f"{elements[1].strip().replace(chr(9), '')}-{elements[4].strip().replace(chr(9), '')}"
                     elif protein:
                         atoms = elements[1].strip().replace("\t", "")
-                    elif ligand:
-                        atoms = elements[4].strip().replace("\t", "")
                     else:
-                        atoms = ""
+                        atoms = elements[4].strip().replace("\t", "")
+
+                    if not subunit:
+                        atoms = atoms + "(" + sections[1] + ")"
 
                     # Add new residue to dictionary if it doesn't exist
                     if residue not in aa:
@@ -227,6 +274,8 @@ def analyze_files(directory: str, protein: bool=True, ligand: bool=True, subunit
 
         files[index] = file.replace(".txt", "")
 
+    if not subunit:
+        matrix = adjust_subunits(matrix=matrix, subunits=list(subunits_set))
     return label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files)
 
 def verify_dimensions(matrix: list):
