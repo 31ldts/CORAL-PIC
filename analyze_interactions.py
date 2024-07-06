@@ -294,7 +294,7 @@ def verify_dimensions(matrix: list):
     if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
         raise ValueError("There are not interactions on the matrix.")
 
-def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_items: int=None, count: bool=False) -> list:
+def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_items: int=None, count: bool=False, residue_chain: bool=False) -> list:
     """
     Sorts and selects reactive rows or columns from a matrix based on interactions.
 
@@ -329,6 +329,31 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
             interactions += len(sections[index].split(" "))
         return interactions
     
+    def sort_by_residue(matrix: list) -> list:
+        # Validate matrix dimensions
+        verify_dimensions(matrix=matrix)
+
+        sort = copy.deepcopy(matrix)
+        axis = get_residues_axis(matrix=matrix)
+        if axis == 'columns':
+            sort = transpose_matrix(matrix=sort)
+        
+        changes = True
+        while changes:
+            changes = False
+            for index in range(2, len(sort)):
+                actual = int(sort[index][0].replace(" ", "")[3:])
+                previous = int(sort[index-1][0].replace(" ", "")[3:])
+                if previous > actual:
+                    changes = True
+                    previous = sort[index-1]
+                    sort[index-1] = sort[index]
+                    sort[index] = previous
+        if axis == 'columns':
+            sort = transpose_matrix(matrix=sort)
+        return sort
+
+
     verify_dimensions(matrix=matrix)
 
     if thr_interactions is not None and selected_items is not None:
@@ -361,6 +386,9 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, selected_it
 
     if axis == 'columns':
         selection = transpose_matrix(matrix=selection)
+    
+    if residue_chain:
+        selection = sort_by_residue(matrix=selection)
 
     return selection
 
