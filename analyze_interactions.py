@@ -147,23 +147,35 @@ def change_directory(path: str) -> None:
     if not os.path.exists(saving_directory):
         raise ValueError("The saving directory must exist inside the project.")
 
-def transpose_matrix(matrix: list) -> list:
+def transpose_matrix(matrix: list, save: str = None) -> list:
     """
-    Transposes the given matrix.
+    Transposes the given matrix (list of lists).
 
     Args:
-        matrix (list of lists): The matrix to transpose.
+        matrix (list): A 2D list (matrix) to transpose.
+        save (str, optional): If provided, saves the transposed matrix to the specified file path.
 
     Returns:
-        list of lists: The transposed matrix.
+        list: The transposed matrix.
     """
-    _check_variable_types(variables=[matrix], expected_types=[list], variable_names=['matrix'])
+    # Check types of matrix and save parameters
+    _check_variable_types(
+        variables=[matrix, save], 
+        expected_types=[list, (str, None.__class__)], 
+        variable_names=['matrix', 'save']
+    )
 
-    
+    # Ensure matrix has consistent dimensions
     _verify_dimensions(matrix=matrix)
 
-    # Use list comprehension to transpose the matrix
-    return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
+    # Transpose the matrix using list comprehension
+    transposed = [[row[i] for row in matrix] for i in range(len(matrix[0]))]
+
+    # Save the transposed matrix if a file path is provided
+    if save:
+        save_matrix(matrix=transposed, filename=save)
+
+    return transposed
 
 def save_matrix(matrix: list, filename: str) -> None:
     """
@@ -188,213 +200,198 @@ def save_matrix(matrix: list, filename: str) -> None:
         for row in matrix:
             csv_writer.writerow(row)
 
-def analyze_files(directory: str, activity_file: str=None, protein: bool=True, ligand: bool=True, subunit: bool=False) -> list:
+def analyze_files(directory: str, activity_file: str = None, protein: bool = True, ligand: bool = True, subunit: bool = False, save: str = None) -> list:
     """
     Analyzes interaction data files in a specified directory, categorizing interactions
     based on protein and ligand atoms involved.
 
     Args:
-        directory (str): The directory path containing interaction data files.
-        activity_file (str): Path to activity file.
-        protein (bool): Flag indicating whether to include protein atoms in analysis.
-        ligand (bool): Flag indicating whether to include ligand atoms in analysis.
-        subunit (bool): Flag indicating whether to differentiate residues from different chains.
+        directory (str): Path to the directory containing interaction data files.
+        activity_file (str, optional): Path to the activity file (CSV) for labeling data.
+        protein (bool, optional): Include protein atoms in the analysis if True.
+        ligand (bool, optional): Include ligand atoms in the analysis if True.
+        subunit (bool, optional): Differentiate between subunits if True.
+        save (str, optional): Path to save the resulting matrix (optional).
 
     Returns:
-        list: A matrix representing categorized interactions between residues and files.
+        list: A matrix categorizing interactions between residues and files.
 
     Raises:
-        FileNotFoundError: If the specified directory does not exist or cannot be accessed.
+        FileNotFoundError: If the specified directory or activity file does not exist.
+        EmptyDirectoryException: If the specified directory is empty.
     """
     
     def label_matrix(matrix: list, rows: list, columns: list, activity_file: str) -> list:
         """
-        Labels the matrix with residue names and file names for clarity.
+        Adds headers to the interaction matrix with residue names and file names.
 
         Args:
-            matrix (list): The 2D list representing interaction data.
-            rows (list): List of residue names.
-            columns (list): List of file names (drugs).
-            activity_file (str): Path to activity file.
+            matrix (list): 2D list representing interaction data.
+            rows (list): List of residue names for row labeling.
+            columns (list): List of file names for column labeling.
+            activity_file (str): Path to the activity file for activity-based labeling.
 
         Returns:
-            list: The labeled matrix with headers.
+            list: The labeled matrix.
         """
-        # Copy rows and columns to avoid modifying input parameters
         rows = [row.replace("\t", "") for row in rows]
-        columns = [""] + columns[:]  # Include an empty string at the beginning
-
-        if activity_file is not None:
+        columns = [""] + columns[:]  # Add an empty string at the start for residue names
+        
+        if activity_file:
             if not os.path.isfile(activity_file):
                 raise FileNotFoundError(f"The file '{activity_file}' does not exist.")
             
-            # Read data from CSV into a dictionary
+            # Read activity data into a dictionary
             data_dict = {}
             with open(activity_file, newline='') as csvfile:
                 csvreader = csv.reader(csvfile)
                 try:
                     next(csvreader)  # Skip header
                 except:
-                    raise(ValueError(f"The CSV file {activity_file} is missing a header."))
+                    raise ValueError(f"The CSV file '{activity_file}' is missing a header.")
                 for key, value in csvreader:
                     data_dict[key] = value
 
-                if not data_dict:
-                    raise(ValueError(f"The CSV file {activity_file} must contain at least one row of data."))
+            if not data_dict:
+                raise ValueError(f"The CSV file '{activity_file}' must contain at least one row of data.")
 
-            # Update column names with data from dictionary
+            # Update column names with activity data
             for i in range(1, len(columns)):
                 drug_name = columns[i]
-                if drug_name in data_dict:
-                    columns[i] = f"{drug_name}_{data_dict[drug_name]}"
-                else:
-                    columns[i] = f"{drug_name}_0"
+                columns[i] = f"{drug_name}_{data_dict.get(drug_name, '0')}"
 
-        # Insert columns as the first row in the matrix
+        # Insert headers into the matrix
         matrix.insert(0, columns)
-        
-        # Insert rows as the first element of each row in the matrix
         for i, row in enumerate(matrix[1:], start=1):
             row.insert(0, rows[i-1])
-        
+
         return matrix
-    
+
     def modify_cell(text: str, interaction: str, atoms: str) -> str:
         """
-        Modifies the cell content based on interaction type and atoms involved.
+        Updates cell content by adding interaction type and involved atoms.
 
         Args:
-            text (str): The current content of the cell.
-            interaction (str): The type of interaction.
-            atoms (str): The atoms involved in the interaction.
+            text (str): Current cell content.
+            interaction (str): Interaction type.
+            atoms (str): Atoms involved in the interaction.
 
         Returns:
-            str: The modified cell content with updated interaction details.
+            str: Updated cell content.
         """
-        # Map interaction types to specific codes
         interaction_map = {
-            "Hydrophobic": '1',
-            "Aromatic_Face/Face": '2',
-            "Aromatic_Edge/Face": '3',
-            "HBond_PROT": '4',
-            "HBond_LIG": '5',
-            "Ionic_PROT": '6',
-            "Ionic_LIG": '7'
+            "Hydrophobic": '1', "Aromatic_Face/Face": '2', "Aromatic_Edge/Face": '3',
+            "HBond_PROT": '4', "HBond_LIG": '5', "Ionic_PROT": '6', "Ionic_LIG": '7'
         }
-        interaction = interaction_map.get(interaction, '8')
+        interaction_code = interaction_map.get(interaction, '8')
 
         if text == "-":
-            return f"{interaction} |{atoms}|"
-
+            return f"{interaction_code} |{atoms}|"
+        
         content = text.replace(", ", "").split("|")[:-1]
         exists = False
         cell = ''
 
-        # Check if interaction type already exists in the cell
         for index, segment in enumerate(content):
-            if index % 2 == 0 and interaction == segment.strip():
+            if index % 2 == 0 and interaction_code == segment.strip():
                 content[index + 1] += f" {atoms}"
                 exists = True
                 break
 
-        # Reconstruct the cell content
-        for index, segment in enumerate(content):
-            if index % 2 == 0:
-                cell += segment
-            else:
-                cell += f"|{segment}|, "
-        cell = cell.rstrip(', ')
-
-        # Add new interaction if it does not exist
+        cell = ', '.join(f"{content[i]}|{content[i+1]}|" for i in range(0, len(content), 2))
+        
         if not exists:
-            cell += f", {interaction} |{atoms}|"
+            cell += f", {interaction_code} |{atoms}|"
+        
         return cell
 
     def read_txt_file(file_name: str) -> list:
         """
-        Reads the content of a text file and returns it as a list of strings, with each string representing a line from the file.
+        Reads a text file and returns its content as a list of lines.
 
         Args:
             file_name (str): The name of the text file to read.
 
         Returns:
-            list: A list containing each line of the file as a string.
+            list: List of lines from the file.
 
         Raises:
-            FileNotFoundError: If the specified file does not exist.
-            Exception: For any other unexpected errors during file reading.
+            FileNotFoundError: If the file does not exist.
+            Exception: For any unexpected errors during reading.
         """
-        string_list = []  # Initialize an empty list to store lines of the file
         try:
             with open(file_name, 'r') as file:
-                lines = file.readlines()
-                for line in lines:
-                    string_list.append(line.strip())  # Remove newline character and add the line to the list
+                return [line.strip() for line in file.readlines()]
         except FileNotFoundError:
             print(f"Error: The file '{file_name}' does not exist.")
-            raise  # Raise the error to notify the caller
+            raise
         except Exception as e:
             print(f"Error: An unexpected error occurred while reading '{file_name}': {e}")
-            raise  # Raise the error to notify the caller
-
-        return string_list
+            raise
 
     def adjust_subunits(matrix: list, subunits: list) -> list:
-        def reduce_strings_in_even_indices(atoms, subunits):
+        """
+        Adjusts matrix data to reflect residue counts for subunits.
+
+        Args:
+            matrix (list): The interaction matrix.
+            subunits (list): List of subunit identifiers.
+
+        Returns:
+            list: Matrix with adjusted subunit information.
+        """
+        def reduce_strings_in_even_indices(atoms: str, subunits: int) -> str:
             pattern = r'[() ]'
             result = list(filter(None, re.split(pattern, atoms)))
-            # Filtrar las celdas con índice par
             even_index_strings = [result[i] for i in range(0, len(result), 2)]
-            
-            # Contar las apariciones de cada string
             string_count = Counter(even_index_strings)
-            
-            # Crear una nueva lista manteniendo solo una aparición de cada string
-            # que aparece en índices pares si aparece más de 3 veces
+
             text = ''
             added_strings = set()
-            
             for i in range(len(result)):
                 string = result[i]
-                if i % 2 == 0:  # Índice par
+                if i % 2 == 0:
                     if string_count[string] >= subunits:
                         if string not in added_strings:
-                            text = text + string + " "
+                            text += f"{string} "
                             added_strings.add(string)
-                        # No agregamos el string si ya fue agregado
                     else:
-                        text = text + string+'('+result[i+1]+') '
-            
-            return '|' + text[:-1] + '|'
+                        text += f"{string}({result[i+1]}) "
+            return '|' + text.strip() + '|'
         
         for row in range(len(matrix)):
             for column in range(len(matrix[row])):
                 cell = matrix[row][column]
-                text = ''
                 if cell != '-':
                     sections = cell.split("|")
-                    for i in range(1, len(sections), 2):
-                        # Dividir segun '|' y quedarme con los impares
-                        text = text + sections[i-1] + reduce_strings_in_even_indices(atoms=sections[i], subunits=len(subunits))
-                        # Diccionario
+                    text = ''.join(
+                        sections[i-1] + reduce_strings_in_even_indices(sections[i], len(subunits))
+                        for i in range(1, len(sections), 2)
+                    )
                     matrix[row][column] = text
         return matrix
 
-    _check_variable_types(variables=[directory, activity_file, protein, ligand, subunit], expected_types=[str, (str, None.__class__), bool, bool, bool], variable_names=['directory', 'activity_file', 'protein', 'ligand', 'subunit'])
+    # Validate input types
+    _check_variable_types(
+        variables=[directory, activity_file, protein, ligand, subunit, save],
+        expected_types=[str, (str, None.__class__), bool, bool, bool, (str, None.__class__)],
+        variable_names=['directory', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
+    )
 
-    # Check if directory exists
+    # Check if the directory exists
     if not os.path.exists(directory):
         raise FileOrDirectoryNotFoundException(path=directory)
     
     files = os.listdir(directory)
-
-    if len(files) == 0:
-         raise EmptyDirectoryException(path=directory)
+    if not files:
+        raise EmptyDirectoryException(path=directory)
 
     matrix = []
     aa = {}
     cont = 0
     subunits_set = set()
+    
+    # Analyze each file in the directory
     for index, file in enumerate(files):
         file_path = os.path.join(directory, file)
         if os.path.isfile(file_path):
@@ -404,72 +401,70 @@ def analyze_files(directory: str, activity_file: str=None, protein: bool=True, l
                 if len(elements) == 10:
                     interaction = elements[0].strip().replace("\t", "")
                     residue = elements[3].strip().replace("\t", "")
+                    
                     if not subunit:
                         sections = residue.split("-")
                         residue = sections[0]
                         subunits_set.add(sections[1])
                     
-                    # Determine which atoms to include based on flags
-                    if protein and ligand:
-                        atoms = f"{elements[1].strip().replace(chr(9), '')}-{elements[4].strip().replace(chr(9), '')}"
-                    elif protein:
-                        atoms = elements[1].strip().replace("\t", "")
-                    else:
-                        atoms = elements[4].strip().replace("\t", "")
-
+                    atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
                     if not subunit:
-                        atoms = atoms + "(" + sections[1] + ")"
+                        atoms += f"({sections[1]})"
 
-                    # Add new residue to dictionary if it doesn't exist
                     if residue not in aa:
                         aa[residue] = cont
                         cont += 1
                     column = aa[residue]
 
-                    # Ensure the matrix has enough columns
+                    # Ensure matrix size and modify cell
                     if len(matrix) <= column:
-                        new_column = ["-"] * len(files)
-                        matrix.append(new_column)
+                        matrix.append(["-"] * len(files))
 
-                    cell = matrix[column][index]
-                    cell = modify_cell(text=cell, interaction=interaction, atoms=atoms)
-                    matrix[column][index] = cell
+                    matrix[column][index] = modify_cell(matrix[column][index], interaction, atoms)
 
         files[index] = file.replace(".txt", "")
 
     if not subunit:
-        matrix = adjust_subunits(matrix=matrix, subunits=list(subunits_set))
-    return label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files, activity_file=activity_file)
+        matrix = adjust_subunits(matrix, list(subunits_set))
+    matrix = label_matrix(matrix, rows=list(aa.keys()), columns=files, activity_file=activity_file)
 
-def sort_matrix(matrix: list, axis: str='rows', thr_interactions: int=None, thr_activity: float=None, selected_items: int=None, count: bool=False, residue_chain: bool=False) -> list:
+    # Save the matrix if specified
+    if save:
+        save_matrix(matrix=matrix, filename=save)
+
+    return matrix
+
+def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, thr_activity: float = None, selected_items: int = None, count: bool = False, residue_chain: bool = False, save: str = None) -> list:
     """
     Sorts and selects reactive rows or columns from a matrix based on interactions.
 
     Args:
         matrix (list of lists): The matrix containing interaction data.
-        axis (str, optional): Specifies whether to select rows ('rows') or columns ('columns').
+        axis (str, optional): Specifies whether to select rows ('rows') or columns ('columns'). Defaults to 'rows'.
         thr_interactions (int, optional): Minimum number of interactions to select a row/column.
+        thr_activity (float, optional): Activity threshold to select rows/columns if activity values are given.
         selected_items (int, optional): Number of top rows/columns to select based on interactions.
-        count (bool, optional): If True, returns counts of interactions instead of the matrix.
-        residue_chain (bool, optional): If True, orders the resulting matrix based on the residues' order in the chain.
+        count (bool, optional): If True, returns the count of interactions instead of the matrix.
+        residue_chain (bool, optional): If True, sorts the resulting matrix based on residue order in the chain.
+        save (str, optional): File path to save the resulting matrix.
 
     Returns:
-        list of lists: Selected rows or columns from the matrix based on the specified criteria.
+        list of lists: The selected rows or columns based on the specified criteria.
 
     Raises:
-        ValueError: If both thr_interactions and selected_items are provided simultaneously.
+        ValueError: If both `thr_interactions` and `selected_items` are provided simultaneously.
         ValueError: If the matrix dimensions are insufficient.
     """
 
     def get_interactions(cell: str) -> int:
         """
-        Counts the number of interactions in a cell of formatted interaction data.
+        Counts the number of interactions in a cell formatted with interaction data.
 
         Args:
-            cell (str): The cell containing interaction data formatted with '|' separators.
+            cell (str): Cell containing interaction data, formatted with '|' separating values.
 
         Returns:
-            int: The total number of interactions found in the cell.
+            int: Total number of interactions in the cell.
         """
         interactions = 0
         sections = cell.split("|")
@@ -479,7 +474,7 @@ def sort_matrix(matrix: list, axis: str='rows', thr_interactions: int=None, thr_
     
     def sort_by_residue(matrix: list) -> list:
         """
-        Sorts the matrix based on the residue indices in the first column.
+        Sorts the matrix based on residue indices in the first column.
 
         Args:
             matrix (list of lists): The matrix to be sorted.
@@ -490,10 +485,10 @@ def sort_matrix(matrix: list, axis: str='rows', thr_interactions: int=None, thr_
         # Validate matrix dimensions
         _verify_dimensions(matrix=matrix)
 
-        # Determine if sorting is needed by rows or columns
+        # Determine whether to sort by rows or columns
         axis = _get_residues_axis(matrix=matrix)
         
-        # If sorting is needed by columns, transpose the matrix first
+        # If sorting by columns, transpose the matrix first
         if axis == 'columns':
             matrix = transpose_matrix(matrix=matrix)
 
@@ -501,7 +496,7 @@ def sort_matrix(matrix: list, axis: str='rows', thr_interactions: int=None, thr_
         header = matrix[0]
         data_rows = matrix[1:]
 
-        # Sort the data rows based on the residue indices
+        # Sort the data rows based on residue indices
         sorted_data_rows = sorted(data_rows, key=lambda row: int(row[0].replace(" ", "")[3:]))
 
         # Combine the header with the sorted data rows
@@ -513,24 +508,29 @@ def sort_matrix(matrix: list, axis: str='rows', thr_interactions: int=None, thr_
 
         return sorted_matrix
 
-    _check_variable_types(variables=[matrix, axis, thr_interactions, thr_activity, selected_items, count, residue_chain], expected_types=[list, str, (int, None.__class__), (float, None.__class__), (int, None.__class__), bool, bool], variable_names=['matrix', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'resude_chain'])
+    # Check variable types to ensure correct input
+    _check_variable_types(
+        variables=[matrix, axis, thr_interactions, thr_activity, selected_items, count, residue_chain, save], 
+        expected_types=[list, str, (int, None.__class__), (float, None.__class__), (int, None.__class__), bool, bool, (str, None.__class__)], 
+        variable_names=['matrix', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'residue_chain', 'save']
+    )
 
     # Validate matrix dimensions
     _verify_dimensions(matrix=matrix)
 
-    # Raise an error if both thr_interactions and selected_items are provided simultaneously
+    # Raise an error if `thr_interactions` and `selected_items` are provided simultaneously
     if thr_interactions is not None and selected_items is not None:
-        raise ValueError("You cannot select by 'thr_interactions' and by 'selected_items' at the same time.")
+        raise ValueError("Cannot select by both 'thr_interactions' and 'selected_items' at the same time.")
     if thr_interactions is not None and thr_activity is not None:
-        raise ValueError("You cannot select by 'thr_interactions' and by 'thr_activity' at the same time.")
+        raise ValueError("Cannot select by both 'thr_interactions' and 'thr_activity' at the same time.")
     if thr_activity is not None and selected_items is not None:
-        raise ValueError("You cannot select by 'thr_activity' and by 'selected_items' at the same time.")
+        raise ValueError("Cannot select by both 'thr_activity' and 'selected_items' at the same time.")
     
-    # Transpose the matrix if axis is 'columns'
+    # Transpose the matrix if operating on columns
     if axis == 'columns':
         matrix = transpose_matrix(matrix=matrix)
     
-    # Initialize a dictionary to store the number of interactions per row
+    # Initialize a dictionary to store interaction counts per row/column
     reactives = {}
     for row in range(1, len(matrix)):
         for column in range(1, len(matrix[row])):
@@ -538,36 +538,40 @@ def sort_matrix(matrix: list, axis: str='rows', thr_interactions: int=None, thr_
             interactions = get_interactions(cell)
             reactives[row] = reactives.get(row, 0) + interactions
     
-    # If count is True, return the counts of interactions instead of the matrix
+    # If `count` is True, return the interaction counts
     if count:
         data = [list(reactives.keys()), list(reactives.values())]
         for index in reactives.keys():
             original_value = matrix[index][0]
-            split_value = original_value.split('_')[0].strip()  # Aplica split y elimina espacios en blanco
+            split_value = original_value.split('_')[0].strip()  # Splits and removes spaces
             data[0][index-1] = split_value
         return data
-    # Select rows based on the specified criteria
+    
+    # Select rows/columns based on the provided criteria
     elif thr_interactions is not None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= thr_interactions]
     elif _get_residues_axis(matrix) == "columns" and thr_activity is not None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: float(matrix[item[0]][0].split("_")[1]), reverse=True) if float(matrix[key][0].split("_")[1]) >= thr_activity]
     elif selected_items:
-        selected_items = selected_items if selected_items < len(matrix) else len(matrix)
+        selected_items = min(selected_items, len(matrix))
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selected_items]]
     else:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)]
     
-
-    # Create the selection matrix with the selected rows
+    # Create the selection matrix with the chosen rows/columns
     selection = [matrix[0]] + [matrix[row] for row in reactives]
 
-    # Transpose the selection matrix back if axis was 'columns'
+    # Transpose the selection back if it was initially transposed for columns
     if axis == 'columns':
         selection = transpose_matrix(matrix=selection)
     
-    # Sort the selection by residue chain if residue_chain is True
+    # Sort the selection by residue chain if specified
     if residue_chain:
         selection = sort_by_residue(matrix=selection)
+
+    # Save the matrix if a save path is provided
+    if save:
+        save_matrix(matrix=selection, filename=save)
 
     return selection
 
@@ -700,122 +704,162 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
         plt.close(fig)  # Close the figure after saving to avoid display overlap
 
-def filter_by_interaction(matrix: list, interactions: list) -> list:
+def filter_by_interaction(matrix: list, interactions: list, save: str = None) -> list:
     """
-    Filters the matrix based on specified interactions.
+    Filters a matrix based on specified interaction types.
 
     Args:
         matrix (list): The matrix to filter, represented as a list of lists.
-        interactions (list): List of valid interactions (numbers 1 to 7).
+        interactions (list): List of valid interaction types (numbers 1 to 7) to retain in the matrix.
+        save (str, optional): Path to save the filtered matrix. Defaults to None.
 
     Returns:
-        list: Filtered matrix with updated interaction information.
+        list: The filtered matrix with only the specified interactions retained.
 
     Raises:
-        ValueError: If matrix dimensions are invalid or if no desired interactions are found.
+        ValueError: If the matrix dimensions are invalid, or if no desired interactions are found.
     """
 
     def validate_list(interactions: list) -> None:
         """
-        Validates the interactions list to ensure it contains valid numbers (1 to 7) without duplicates.
+        Validates the interaction list to ensure it contains unique numbers between 1 and 7.
 
         Args:
-            interactions (list): List of integers representing interactions.
-
-        Returns:
-            None
+            interactions (list): List of integers representing interaction types.
 
         Raises:
-            ValueError: If any number is outside the range 1 to 7 or if there are duplicates.
+            ValueError: If any number is outside the range of 1 to 7 or if there are duplicates.
         """
-        
-        # Valid numbers are between 1 and 7
+        # Valid interactions are numbers from 1 to 7
         valid_numbers = set(range(1, 8))
 
-        # Check if all numbers in the list are valid
+        # Check if all numbers in the list are within the valid range
         for num in interactions:
             if num not in valid_numbers:
-                raise ValueError(f"The number {num} is not valid. It should be a number from 1 to 7.")
+                raise ValueError(f"Invalid interaction: {num}. Must be a number between 1 and 7.")
 
-        # Check for duplicates in the list
+        # Ensure the list contains no duplicate values
         if len(set(interactions)) != len(interactions):
-            raise ValueError("The list should not contain duplicate numbers.")
+            raise ValueError("The interaction list must not contain duplicates.")
 
-    # Validate matrix dimensions
+    # Validate types of the matrix, interactions, and save parameters
+    _check_variable_types(
+        variables=[matrix, interactions, save], 
+        expected_types=[list, list, (str, None.__class__)], 
+        variable_names=['matrix', 'interactions', 'save']
+    )
+
+    # Validate that the matrix has appropriate dimensions
     _verify_dimensions(matrix=matrix)
 
-    # Ensure the interactions list is valid
+    # Validate that the interaction list contains valid values
     validate_list(interactions=interactions)
 
+    # Create a deep copy of the matrix to avoid modifying the original
     filtered = copy.deepcopy(matrix)
 
-    # Flag to track if any changes were made in the matrix
+    # Track whether any interactions were filtered
     changes = False
 
-    # Iterate through each cell in the matrix
+    # Iterate through each cell in the matrix (skipping the header row/column)
     for i in range(1, len(filtered)):
         for j in range(1, len(filtered[i])):
             cell = filtered[i][j]
             
-            # Process non-empty cells
+            # If the cell is not empty ('-'), process it
             if cell != '-':
                 sections = cell.split(", ")
                 cell = ""
                 
-                # Iterate through each section in the cell
+                # Iterate through the sections in the cell to filter valid interactions
                 for section in sections:
-                    # Check if the first number in the section is in the valid interactions
+                    # Check if the first number in the section is in the valid interaction list
                     if int(section.split(" ")[0]) in interactions:
+                        # Add the section to the cell if it contains a valid interaction
                         if cell == '':
                             cell = section
                         else:
                             cell += ', ' + section
                         changes = True
                 
-                # Update the matrix cell based on filtered sections
-                if cell == '':
-                    filtered[i][j] = '-'
-                else:
-                    filtered[i][j] = cell
+                # Update the cell with the filtered sections or set it to '-' if empty
+                filtered[i][j] = cell if cell != '' else '-'
     
-    # If no changes were made, raise an error
+    # If no changes were made, raise an error indicating no matching interactions were found
     if not changes:
-        raise ValueError("The matrix does not have any of the desired interactions.")
+        raise ValueError("No matching interactions were found in the matrix.")
+
+    # Save the filtered matrix to a file if a save path is provided
+    if save:
+        save_matrix(matrix=filtered, filename=save)
 
     return filtered
 
-def filter_by_subunit(matrix: list, subunits: list) -> list:
+def filter_by_subunit(matrix: list, subunits: list, save: str = None) -> list:
+    """
+    Filters a matrix based on specified subunits, removing rows or columns
+    that do not contain the desired subunits.
 
+    Args:
+        matrix (list): The matrix to filter, represented as a list of lists.
+        subunits (list): List of valid subunits to retain in the matrix.
+        save (str, optional): Path to save the filtered matrix. Defaults to None.
+
+    Returns:
+        list: The filtered matrix with only the specified subunits retained.
+
+    Raises:
+        ValueError: If the matrix dimensions are invalid or if no desired subunits are found.
+    """
+    
     def get_subunits_location(matrix: list) -> str:
+        """
+        Determines the location of subunits in the matrix (residues or interactions).
+
+        Args:
+            matrix (list): The matrix being analyzed.
+
+        Returns:
+            str: 'residues' if the first column indicates residue data, otherwise 'interactions'.
+        """
         return 'residues' if len(matrix[1][0].split('-')) == 2 else 'interactions'
-    # Validate matrix dimensions
+    
+    # Check types of the matrix, subunits, and save parameters
+    _check_variable_types(
+        variables=[matrix, subunits, save], 
+        expected_types=[list, list, (str, None.__class__)], 
+        variable_names=['matrix', 'subunits', 'save']
+    )
+
+    # Validate the dimensions of the matrix
     _verify_dimensions(matrix=matrix)
 
+    # Create a deep copy of the matrix to avoid modifying the original
     filtered = copy.deepcopy(matrix)
 
+    # Determine the axis of residues in the matrix
     axis = _get_residues_axis(matrix=filtered)
 
+    # Transpose the matrix if the axis is columns
     if axis == "columns":
         filtered = transpose_matrix(matrix=filtered)
     
+    # Determine whether the matrix contains residues or interactions
     subunitsLocation = get_subunits_location(matrix=filtered)
 
-    # Flag to track if any changes were made in the matrix
+    # Initialize change tracking variables
     changes = 0
-    zone = False
 
+    # Filter based on residue locations
     if subunitsLocation == 'residues':
         for index in range(1, len(filtered)):
-            sections = filtered[index-changes][0].split("-")
-            if len(sections) != 2:
+            sections = filtered[index - changes][0].split("-")
+            # Remove rows without valid sections or subunits
+            if len(sections) != 2 or sections[1] not in subunits:
                 filtered.pop(index - changes)
                 changes += 1
-            else:
-                if sections[1] not in subunits:
-                    filtered.pop(index - changes)
-                    changes += 1
     else:
-        # Iterate through each cell in the matrix
+        # Iterate through each cell in the matrix to filter interactions
         for i in range(1, len(filtered)):
             for j in range(1, len(filtered[i])):
                 cell = filtered[i][j]
@@ -827,41 +871,43 @@ def filter_by_subunit(matrix: list, subunits: list) -> list:
                     
                     # Iterate through each section in the cell
                     for section in sections:
-                        # Check if the first number in the section is in the valid interactions
                         separators = section.split('|')[:-1]
 
-                        #Todas las interacciones
-                        for index in range(1,len(separators)):
+                        # Filter out unwanted interactions
+                        for index in range(1, len(separators)):
                             if index % 2 != 0:
                                 interactions = separators[index].split(' ')
                                 subchanges = 0
                                 
-                                # Interacciones registradas de un tipo
+                                # Remove interactions not in the valid subunits
                                 for interaction in range(len(interactions)):
-                                    if interactions[interaction-subchanges][-2] not in subunits:
-                                        changes = True
-                                        interactions.pop(interaction-subchanges)
-                                        subchanges+=1
-                                if len(interactions) != 0:
-                                    cell += separators[index-1] + '|'
-                                    for interaction in interactions:
-                                        cell += interaction + ' '
-                                    cell = cell[:-1] + '|, '
-                                    
-                    cell = cell[:-2]
-                    # Update the matrix cell based on filtered sections
-                    if cell == '':
-                        filtered[i][j] = '-'
-                    else:
-                        filtered[i][j] = cell
-    
-    # If no changes were made, raise an error
-    if changes == 0:
-        raise ValueError("The matrix does not have any of the desired interactions.")
+                                    if interactions[interaction - subchanges][-2] not in subunits:
+                                        changes += 1
+                                        interactions.pop(interaction - subchanges)
+                                        subchanges += 1
 
+                                # Rebuild the cell if there are valid interactions
+                                if interactions:
+                                    cell += separators[index - 1] + '|'
+                                    cell += ' '.join(interactions) + ' |, '
+                                    
+                    # Update the cell with filtered interactions
+                    cell = cell[:-2]  # Remove trailing comma and space
+                    filtered[i][j] = cell if cell else '-'
+    
+    # Raise an error if no changes were made (no desired subunits found)
+    if changes == 0:
+        raise ValueError("The matrix does not contain any of the desired subunits.")
+
+    # Transpose the matrix back if it was originally in columns
     if axis == "columns":
         filtered = transpose_matrix(matrix=filtered)
 
+    # Remove any empty rows or columns
     filtered = _remove_void(matrix=filtered)
+
+    # Save the filtered matrix to a file if a save path is provided
+    if save:
+        save_matrix(matrix=filtered, filename=save)
 
     return filtered
