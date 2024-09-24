@@ -11,6 +11,120 @@ import re
 
 saving_directory = os.getcwd()
 
+##############
+# Exceptions #
+##############
+
+class TypeMismatchException(Exception):
+    def __init__(self, variable_name, expected_types, actual_type):
+        expected_types_str = ", ".join([t.__name__ for t in expected_types])
+        self.message = f"Variable '{variable_name}' has type {actual_type.__name__}, expected one of ({expected_types_str})."
+        super().__init__(self.message)
+
+class FileOrDirectoryNotFoundException(Exception):
+    def __init__(self, path, message="File or directory not found"):
+        self.path = path
+        self.message = f"{message}: '{path}'"
+        super().__init__(self.message)
+
+class EmptyDirectoryException(Exception):
+    def __init__(self, path):
+        self.path = path
+        self.message = f"Directory '{path}' is empty"
+        super().__init__(self.message)
+
+###################
+# Private Methods #
+###################
+
+def _check_variable_types(variables, expected_types, variable_names):
+    # Check that all lists have the same length
+    if len(variables) != len(expected_types) or len(variables) != len(variable_names):
+        raise ValueError("The lists of variables, expected types, and variable names must all have the same length.")
+    
+    for i, variable in enumerate(variables):
+        expected_type = expected_types[i]
+        variable_name = variable_names[i]
+        
+        # Check if the variable's type matches one of the expected types
+        if not isinstance(variable, expected_type if isinstance(expected_type, tuple) else (expected_type,)):
+            actual_type = type(variable)
+            raise TypeMismatchException(variable_name, expected_type if isinstance(expected_type, tuple) else (expected_type,), actual_type)
+
+def _get_residues_axis(matrix: list) -> str:
+    """
+    Determines whether the residues' axis is in the rows or columns of the matrix.
+
+    Args:
+        matrix (list of lists): The matrix containing interaction data.
+
+    Returns:
+        str: 'columns' if residues' axis is in the columns, 'rows' if residues' axis is in the rows.
+
+    Raises:
+        ValueError: If the residues' axis cannot be determined.
+    """
+    # Validate matrix dimensions
+    _verify_dimensions(matrix=matrix)
+    
+    # Count the spaces in specific positions to determine the axis
+    count_0_1 = matrix[0][1].count(' ')
+    count_1_0 = matrix[1][0].count(' ')
+
+    # If the counts are equal, the axis cannot be determined
+    if count_0_1 == count_1_0:
+        raise ValueError("Cannot determine the residues' axis.")
+    # If the count in the first row, second column is 1, the axis is 'columns'
+    elif count_0_1 == 1:
+        return 'columns'
+    # If the count in the second row, first column is 1, the axis is 'rows'
+    elif count_1_0 == 1:
+        return 'rows'
+    # If neither condition is met, the axis cannot be determined
+    else:
+        raise ValueError("Cannot determine the residues' axis.")
+
+def _verify_dimensions(matrix: list):
+    """
+    Verifies the dimensions of the matrix to ensure it contains at least 2 rows and 2 columns.
+
+    Args:
+        matrix (list of lists): The matrix to be verified.
+
+    Raises:
+        ValueError: If the matrix has fewer than 2 rows or any row has fewer than 2 columns.
+
+    Example:
+        If matrix = [['-', '1'], ['2', '-']], verify_dimensions(matrix) will pass.
+    """
+    if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
+        raise ValueError("There are not interactions on the matrix.")
+
+def _remove_void(matrix: list):
+    def _remove_void_rows(matrix: list) -> list:
+        changes = 0
+        for row in range(1, len(matrix)):
+            if all(column == '-' for column in matrix[row - changes][1:]):
+                matrix.pop(row - changes)
+                changes += 1
+        return matrix
+
+    # Remove empty rows
+    matrix = _remove_void_rows(matrix)
+    
+    # Transpose the matrix, remove empty columns (which are now rows)
+    matrix = transpose_matrix(matrix=matrix)
+    matrix = _remove_void_rows(matrix)
+    
+    # Transpose back to restore original format
+    matrix = transpose_matrix(matrix=matrix)
+    
+    return matrix
+
+##################
+# Public Methods #
+##################
+
 def change_directory(path: str) -> None:
     """
     Changes the saving directory to a subdirectory within the current directory.
@@ -43,7 +157,10 @@ def transpose_matrix(matrix: list) -> list:
     Returns:
         list of lists: The transposed matrix.
     """
-    verify_dimensions(matrix=matrix)
+    _check_variable_types(variables=[matrix], expected_types=[list], variable_names=['matrix'])
+
+    
+    _verify_dimensions(matrix=matrix)
 
     # Use list comprehension to transpose the matrix
     return [[row[i] for row in matrix] for i in range(len(matrix[0]))]
@@ -61,7 +178,7 @@ def save_matrix(matrix: list, filename: str) -> None:
     """
     global saving_directory
 
-    verify_dimensions(matrix=matrix)
+    _verify_dimensions(matrix=matrix)
 
     # Create the CSV file
     with open(os.path.join(saving_directory, filename), 'w', newline='') as csv_file:
@@ -71,7 +188,7 @@ def save_matrix(matrix: list, filename: str) -> None:
         for row in matrix:
             csv_writer.writerow(row)
 
-def analyze_files(directory: str, activity_file: str=None, protein: bool=True, ligand: bool=True, subunit: bool=True) -> list:
+def analyze_files(directory: str, activity_file: str=None, protein: bool=True, ligand: bool=True, subunit: bool=False) -> list:
     """
     Analyzes interaction data files in a specified directory, categorizing interactions
     based on protein and ligand atoms involved.
@@ -115,10 +232,16 @@ def analyze_files(directory: str, activity_file: str=None, protein: bool=True, l
             data_dict = {}
             with open(activity_file, newline='') as csvfile:
                 csvreader = csv.reader(csvfile)
-                next(csvreader)  # Skip header
+                try:
+                    next(csvreader)  # Skip header
+                except:
+                    raise(ValueError(f"The CSV file {activity_file} is missing a header."))
                 for key, value in csvreader:
                     data_dict[key] = value
-            
+
+                if not data_dict:
+                    raise(ValueError(f"The CSV file {activity_file} must contain at least one row of data."))
+
             # Update column names with data from dictionary
             for i in range(1, len(columns)):
                 drug_name = columns[i]
@@ -252,12 +375,22 @@ def analyze_files(directory: str, activity_file: str=None, protein: bool=True, l
                     sections = cell.split("|")
                     for i in range(1, len(sections), 2):
                         # Dividir segun '|' y quedarme con los impares
-                        text = text + sections[i-1] + reduce_strings_in_even_indices(atoms=sections[i], subunits=len(subunits)) + ' '
+                        text = text + sections[i-1] + reduce_strings_in_even_indices(atoms=sections[i], subunits=len(subunits))
                         # Diccionario
-                    matrix[row][column] = text[:-1]
+                    matrix[row][column] = text
         return matrix
 
+    _check_variable_types(variables=[directory, activity_file, protein, ligand, subunit], expected_types=[str, (str, None.__class__), bool, bool, bool], variable_names=['directory', 'activity_file', 'protein', 'ligand', 'subunit'])
+
+    # Check if directory exists
+    if not os.path.exists(directory):
+        raise FileOrDirectoryNotFoundException(path=directory)
+    
     files = os.listdir(directory)
+
+    if len(files) == 0:
+         raise EmptyDirectoryException(path=directory)
+
     matrix = []
     aa = {}
     cont = 0
@@ -308,29 +441,13 @@ def analyze_files(directory: str, activity_file: str=None, protein: bool=True, l
         matrix = adjust_subunits(matrix=matrix, subunits=list(subunits_set))
     return label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files, activity_file=activity_file)
 
-def verify_dimensions(matrix: list):
-    """
-    Verifies the dimensions of the matrix to ensure it contains at least 2 rows and 2 columns.
-
-    Args:
-        matrix (list of lists): The matrix to be verified.
-
-    Raises:
-        ValueError: If the matrix has fewer than 2 rows or any row has fewer than 2 columns.
-
-    Example:
-        If matrix = [['-', '1'], ['2', '-']], verify_dimensions(matrix) will pass.
-    """
-    if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
-        raise ValueError("There are not interactions on the matrix.")
-
-def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, thr_activity: float=None, selected_items: int=None, count: bool=False, residue_chain: bool=False) -> list:
+def sort_matrix(matrix: list, axis: str='rows', thr_interactions: int=None, thr_activity: float=None, selected_items: int=None, count: bool=False, residue_chain: bool=False) -> list:
     """
     Sorts and selects reactive rows or columns from a matrix based on interactions.
 
     Args:
         matrix (list of lists): The matrix containing interaction data.
-        axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+        axis (str, optional): Specifies whether to select rows ('rows') or columns ('columns').
         thr_interactions (int, optional): Minimum number of interactions to select a row/column.
         selected_items (int, optional): Number of top rows/columns to select based on interactions.
         count (bool, optional): If True, returns counts of interactions instead of the matrix.
@@ -371,10 +488,10 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, thr_activit
             list of lists: The matrix sorted by residue indices.
         """
         # Validate matrix dimensions
-        verify_dimensions(matrix=matrix)
+        _verify_dimensions(matrix=matrix)
 
         # Determine if sorting is needed by rows or columns
-        axis = get_residues_axis(matrix=matrix)
+        axis = _get_residues_axis(matrix=matrix)
         
         # If sorting is needed by columns, transpose the matrix first
         if axis == 'columns':
@@ -396,8 +513,10 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, thr_activit
 
         return sorted_matrix
 
+    _check_variable_types(variables=[matrix, axis, thr_interactions, thr_activity, selected_items, count, residue_chain], expected_types=[list, str, (int, None.__class__), (float, None.__class__), (int, None.__class__), bool, bool], variable_names=['matrix', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'resude_chain'])
+
     # Validate matrix dimensions
-    verify_dimensions(matrix=matrix)
+    _verify_dimensions(matrix=matrix)
 
     # Raise an error if both thr_interactions and selected_items are provided simultaneously
     if thr_interactions is not None and selected_items is not None:
@@ -430,7 +549,7 @@ def sort_matrix(matrix: list, axis: str, thr_interactions: int=None, thr_activit
     # Select rows based on the specified criteria
     elif thr_interactions is not None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= thr_interactions]
-    elif get_residues_axis(matrix) == "columns" and thr_activity is not None:
+    elif _get_residues_axis(matrix) == "columns" and thr_activity is not None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: float(matrix[item[0]][0].split("_")[1]), reverse=True) if float(matrix[key][0].split("_")[1]) >= thr_activity]
     elif selected_items:
         selected_items = selected_items if selected_items < len(matrix) else len(matrix)
@@ -504,7 +623,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         Returns:
             tuple: A tuple containing the stacked data and indices.
         """
-        verify_dimensions(matrix=matrix)
+        _verify_dimensions(matrix=matrix)
         if axis == 'columns':
             matrix = transpose_matrix(matrix)
         
@@ -552,7 +671,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
 
     ax.set_ylabel(label_y)
     if label_x is  None:
-        residues_axis = get_residues_axis(matrix=matrix)
+        residues_axis = _get_residues_axis(matrix=matrix)
         label_x = "Interacting protein residues" if residues_axis == axis else "PDB complexes"
     ax.set_xlabel(label_x)
     ax.set_title(title)
@@ -623,7 +742,7 @@ def filter_by_interaction(matrix: list, interactions: list) -> list:
             raise ValueError("The list should not contain duplicate numbers.")
 
     # Validate matrix dimensions
-    verify_dimensions(matrix=matrix)
+    _verify_dimensions(matrix=matrix)
 
     # Ensure the interactions list is valid
     validate_list(interactions=interactions)
@@ -665,35 +784,84 @@ def filter_by_interaction(matrix: list, interactions: list) -> list:
 
     return filtered
 
-def get_residues_axis(matrix: list) -> str:
-    """
-    Determines whether the residues' axis is in the rows or columns of the matrix.
+def filter_by_subunit(matrix: list, subunits: list) -> list:
 
-    Args:
-        matrix (list of lists): The matrix containing interaction data.
-
-    Returns:
-        str: 'columns' if residues' axis is in the columns, 'rows' if residues' axis is in the rows.
-
-    Raises:
-        ValueError: If the residues' axis cannot be determined.
-    """
+    def get_subunits_location(matrix: list) -> str:
+        return 'residues' if len(matrix[1][0].split('-')) == 2 else 'interactions'
     # Validate matrix dimensions
-    verify_dimensions(matrix=matrix)
-    
-    # Count the spaces in specific positions to determine the axis
-    count_0_1 = matrix[0][1].count(' ')
-    count_1_0 = matrix[1][0].count(' ')
+    _verify_dimensions(matrix=matrix)
 
-    # If the counts are equal, the axis cannot be determined
-    if count_0_1 == count_1_0:
-        raise ValueError("Cannot determine the residues' axis.")
-    # If the count in the first row, second column is 1, the axis is 'columns'
-    elif count_0_1 == 1:
-        return 'columns'
-    # If the count in the second row, first column is 1, the axis is 'rows'
-    elif count_1_0 == 1:
-        return 'rows'
-    # If neither condition is met, the axis cannot be determined
+    filtered = copy.deepcopy(matrix)
+
+    axis = _get_residues_axis(matrix=filtered)
+
+    if axis == "columns":
+        filtered = transpose_matrix(matrix=filtered)
+    
+    subunitsLocation = get_subunits_location(matrix=filtered)
+
+    # Flag to track if any changes were made in the matrix
+    changes = 0
+    zone = False
+
+    if subunitsLocation == 'residues':
+        for index in range(1, len(filtered)):
+            sections = filtered[index-changes][0].split("-")
+            if len(sections) != 2:
+                filtered.pop(index - changes)
+                changes += 1
+            else:
+                if sections[1] not in subunits:
+                    filtered.pop(index - changes)
+                    changes += 1
     else:
-        raise ValueError("Cannot determine the residues' axis.")
+        # Iterate through each cell in the matrix
+        for i in range(1, len(filtered)):
+            for j in range(1, len(filtered[i])):
+                cell = filtered[i][j]
+                
+                # Process non-empty cells
+                if cell != '-':
+                    sections = cell.split(", ")
+                    cell = ""
+                    
+                    # Iterate through each section in the cell
+                    for section in sections:
+                        # Check if the first number in the section is in the valid interactions
+                        separators = section.split('|')[:-1]
+
+                        #Todas las interacciones
+                        for index in range(1,len(separators)):
+                            if index % 2 != 0:
+                                interactions = separators[index].split(' ')
+                                subchanges = 0
+                                
+                                # Interacciones registradas de un tipo
+                                for interaction in range(len(interactions)):
+                                    if interactions[interaction-subchanges][-2] not in subunits:
+                                        changes = True
+                                        interactions.pop(interaction-subchanges)
+                                        subchanges+=1
+                                if len(interactions) != 0:
+                                    cell += separators[index-1] + '|'
+                                    for interaction in interactions:
+                                        cell += interaction + ' '
+                                    cell = cell[:-1] + '|, '
+                                    
+                    cell = cell[:-2]
+                    # Update the matrix cell based on filtered sections
+                    if cell == '':
+                        filtered[i][j] = '-'
+                    else:
+                        filtered[i][j] = cell
+    
+    # If no changes were made, raise an error
+    if changes == 0:
+        raise ValueError("The matrix does not have any of the desired interactions.")
+
+    if axis == "columns":
+        filtered = transpose_matrix(matrix=filtered)
+
+    filtered = _remove_void(matrix=filtered)
+
+    return filtered
