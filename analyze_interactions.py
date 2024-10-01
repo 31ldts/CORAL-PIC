@@ -371,6 +371,31 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
                     matrix[row][column] = text
         return matrix
 
+    def sort_interactions(matrix: list) -> list:
+        """
+        Sorts the interactions within each cell of the matrix in ascending order based on the number that follows the initial space.
+
+        Args:
+            matrix (list): The matrix to be sorted, represented as a list of lists.
+
+        Returns:
+            list: The sorted matrix with interactions in each cell ordered in ascending order.
+        """
+        for row_index, row in enumerate(matrix):
+            for cell_index, cell in enumerate(row):
+                if cell != '-':
+                    # Split the cell into individual interactions
+                    interactions = cell.split(", ")
+
+                    # Sort the interactions based on the number that follows the initial space
+                    if len(interactions) > 1:
+                        interactions = sorted(interactions, key=lambda x: int(x.split(" ")[0]))
+
+                    # Join the sorted interactions back and update the cell
+                    matrix[row_index][cell_index] = ", ".join(interactions)
+
+        return matrix
+
     # Validate input types
     _check_variable_types(
         variables=[directory, activity_file, protein, ligand, subunit, save],
@@ -426,7 +451,8 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
 
     if not subunit:
         matrix = adjust_subunits(matrix, list(subunits_set))
-    matrix = label_matrix(matrix, rows=list(aa.keys()), columns=files, activity_file=activity_file)
+    matrix = sort_interactions(matrix=matrix)
+    matrix = label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files, activity_file=activity_file)
 
     # Save the matrix if specified
     if save:
