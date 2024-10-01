@@ -552,6 +552,10 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
     if thr_activity is not None and selected_items is not None:
         raise ValueError("Cannot select by both 'thr_activity' and 'selected_items' at the same time.")
     
+    # Ensure the correct axis is selected for activity-based selection
+    if thr_activity is not None:
+        axis = 'rows' if _get_residues_axis(matrix=matrix) == 'columns' else 'columns'
+
     # Transpose the matrix if operating on columns
     if axis == 'columns':
         matrix = transpose_matrix(matrix=matrix)
