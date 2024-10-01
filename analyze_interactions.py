@@ -68,18 +68,18 @@ def _get_residues_axis(matrix: list) -> str:
     _verify_dimensions(matrix=matrix)
     
     # Count the spaces in specific positions to determine the axis
-    count_0_1 = matrix[0][1].count(' ')
-    count_1_0 = matrix[1][0].count(' ')
+    count_0_1 = matrix[0][1].count('(')
+    count_1_0 = matrix[1][0].count('(')
 
     # If the counts are equal, the axis cannot be determined
     if count_0_1 == count_1_0:
         raise ValueError("Cannot determine the residues' axis.")
     # If the count in the first row, second column is 1, the axis is 'columns'
     elif count_0_1 == 1:
-        return 'columns'
+        return 'rows'
     # If the count in the second row, first column is 1, the axis is 'rows'
     elif count_1_0 == 1:
-        return 'rows'
+        return 'columns'
     # If neither condition is met, the axis cannot be determined
     else:
         raise ValueError("Cannot determine the residues' axis.")
@@ -250,7 +250,7 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
                 except:
                     raise ValueError(f"The CSV file '{activity_file}' is missing a header.")
                 for key, value in csvreader:
-                    data_dict[key] = value
+                    data_dict[key] = str(round(float(value), 3))
 
             if not data_dict:
                 raise ValueError(f"The CSV file '{activity_file}' must contain at least one row of data.")
@@ -258,7 +258,7 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
             # Update column names with activity data
             for i in range(1, len(columns)):
                 drug_name = columns[i]
-                columns[i] = f"{drug_name}_{data_dict.get(drug_name, '0')}"
+                columns[i] = f"{drug_name} ({data_dict.get(drug_name, '0')})"
 
         # Insert headers into the matrix
         matrix.insert(0, columns)
@@ -551,7 +551,7 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
     elif thr_interactions is not None:
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= thr_interactions]
     elif _get_residues_axis(matrix) == "columns" and thr_activity is not None:
-        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: float(matrix[item[0]][0].split("_")[1]), reverse=True) if float(matrix[key][0].split("_")[1]) >= thr_activity]
+        reactives = [key for key, value in sorted(reactives.items(), key=lambda item: float(matrix[item[0]][0].split(" (")[1].replace(")", "")), reverse=True) if float(matrix[key][0].split(" (")[1].replace(")", "")) >= thr_activity]
     elif selected_items:
         selected_items = min(selected_items, len(matrix))
         reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selected_items]]
