@@ -523,7 +523,7 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
         data_rows = matrix[1:]
 
         # Sort the data rows based on residue indices
-        sorted_data_rows = sorted(data_rows, key=lambda row: int(row[0].replace(" ", "")[3:]))
+        sorted_data_rows = sorted(data_rows, key=lambda row: int(row[0].replace(" ", "")[3:].split("-")[0]))
 
         # Combine the header with the sorted data rows
         sorted_matrix = [header] + sorted_data_rows
