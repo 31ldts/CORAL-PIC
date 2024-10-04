@@ -8,6 +8,10 @@ import mplcursors
 import copy
 from collections import Counter
 import re
+from colorama import Fore, init
+
+# Initialize colorama
+init(autoreset=True)
 
 saving_directory = os.getcwd()
 
@@ -396,6 +400,31 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
 
         return matrix
 
+    def validate_string(input_string: str) -> bool:
+        """
+        Validates the given string to ensure it follows a specific format:
+        - The first three characters must represent an amino acid abbreviation.
+        - A space follows the amino acid.
+        - After the space(s), there must be a sequence of digits followed by a dash and additional characters.
+
+        Args:
+            input_string (str): The string to be validated.
+
+        Returns:
+            bool: True if the string matches the required format, False otherwise.
+        """
+        # Regular expression to validate the required format:
+        # - Three uppercase letters (amino acid abbreviation)
+        # - Followed by one or more spaces
+        # - One or more digits, a dash, and then anything after it
+        pattern = r'^[A-Z]{3} +\d+-.+$'
+        
+        # Match the input string with the regular expression pattern
+        if re.match(pattern, input_string):
+            return True
+        else:
+            return False
+
     # Validate input types
     _check_variable_types(
         variables=[directory, activity_file, protein, ligand, subunit, save],
@@ -426,27 +455,27 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
                 if len(elements) == 10:
                     interaction = elements[0].strip().replace("\t", "")
                     residue = elements[3].strip().replace("\t", "")
-                    
-                    if not subunit:
-                        sections = residue.split("-")
-                        residue = sections[0]
-                        subunits_set.add(sections[1])
-                    
-                    atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
-                    if not subunit:
-                        atoms += f"({sections[1]})"
+                    if validate_string(residue):
+                        if not subunit:
+                            sections = residue.split("-")
+                            residue = sections[0]
+                            subunits_set.add(sections[1])
 
-                    if residue not in aa:
-                        aa[residue] = cont
-                        cont += 1
-                    column = aa[residue]
+                        atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
+                        if not subunit:
+                            atoms += f"({sections[1]})"
 
-                    # Ensure matrix size and modify cell
-                    if len(matrix) <= column:
-                        matrix.append(["-"] * len(files))
+                        if residue not in aa:
+                            aa[residue] = cont
+                            cont += 1
+                        column = aa[residue]
 
-                    matrix[column][index] = modify_cell(matrix[column][index], interaction, atoms)
+                        # Ensure matrix size and modify cell
+                        if len(matrix) <= column:
+                            matrix.append(["-"] * len(files))
 
+                        matrix[column][index] = modify_cell(matrix[column][index], interaction, atoms)
+                
         files[index] = file.replace(".txt", "")
 
     if not subunit:
