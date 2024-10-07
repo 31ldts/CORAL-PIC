@@ -951,7 +951,7 @@ def filter_by_subunit(matrix: list, subunits: list, save: str = None) -> list:
                                 
                                 # Remove interactions not in the valid subunits
                                 for interaction in range(len(interactions)):
-                                    if interactions[interaction - subchanges][-2] not in subunits:
+                                    if len(interactions[interaction-subchanges].split('(')) > 1 and interactions[interaction - subchanges][-2] not in subunits:
                                         changes += 1
                                         interactions.pop(interaction - subchanges)
                                         subchanges += 1
