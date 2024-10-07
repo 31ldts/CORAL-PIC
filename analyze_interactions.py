@@ -264,9 +264,10 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
         """
         interaction_map = {
             "Hydrophobic": '1', "Aromatic_Face/Face": '2', "Aromatic_Edge/Face": '3',
-            "HBond_PROT": '4', "HBond_LIG": '5', "Ionic_PROT": '6', "Ionic_LIG": '7'
+            "HBond_PROT": '4', "HBond_LIG": '5', "Ionic_PROT": '6', "Ionic_LIG": '7',
+            "Metal Acceptor": '8', "Pi/Cation": '9'
         }
-        interaction_code = interaction_map.get(interaction, '8')
+        interaction_code = interaction_map.get(interaction, '10')
 
         if text == "":
             return f"{interaction_code} |{atoms}|"
@@ -613,11 +614,19 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
 
     return selection
 
-import matplotlib.pyplot as plt
-import mplcursors
-from matplotlib.ticker import MaxNLocator
+# Definimos una variable global con las etiquetas de los tipos de interacciones
+INTERACTION_LABELS = [
+    "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
+    "Ionic_PROT", "Ionic_LIG", "Metal Acceptor", "Pi/Cation", "Other_Interactions"
+]
 
-def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False, show_pie_chart: bool = False) -> None:
+# Definimos una variable global con las etiquetas de los tipos de interacciones
+INTERACTION_LABELS = [
+    "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
+    "Ionic_PROT", "Ionic_LIG", "Metal Acceptor", "Pi/Cation", "Other_Interactions"
+]
+
+def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False, show_pie_chart: bool = False, colors: list = None) -> None:
     """
     Plots a bar chart or pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
 
@@ -631,15 +640,19 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         stacked (bool, optional): If True, creates a stacked bar chart. Defaults to False.
         save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
         show_pie_chart (bool, optional): If True, shows a pie chart instead of a bar chart. Defaults to False.
+        colors (list, optional): List of colors to use for each interaction type. Defaults to None.
 
     Returns:
         None
-
-    Example:
-        If matrix = [['', 'file1', 'file2'], ['residue1', '1 |atom1|, 2 |atom2|']],
-        plot_matrix(matrix, 'interaction_plot', 'rows', label_x='Residues', label_y='Interactions',
-                    title='Interactions per Residue')
     """
+
+    # Define default colors if not provided
+    if colors is None:
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # Use default Matplotlib colors
+
+    # Ensure the number of colors matches the number of interaction labels
+    if len(colors) < len(INTERACTION_LABELS):
+        raise ValueError(f"Not enough colors provided. Expected at least {len(INTERACTION_LABELS)} colors, but got {len(colors)}.")
 
     def get_interactions(cell: str) -> list:
         """
@@ -651,7 +664,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         Returns:
             list: A list of interaction counts for each interaction type.
         """
-        interactions = [0] * 8
+        interactions = [0] * len(INTERACTION_LABELS)
         sections = cell.split("|")
         for index in range(1, len(sections), 2):
             interaction = int(sections[index - 1].replace(" ", "").replace(",", ""))
@@ -673,14 +686,14 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         if axis == 'columns':
             matrix = transpose_matrix(matrix)
         
-        reactives = {row: [0] * 8 for row in range(1, len(matrix))}
+        reactives = {row: [0] * len(INTERACTION_LABELS) for row in range(1, len(matrix))}
         indices = [matrix[row][0].split('_')[0].strip() for row in range(1, len(matrix))]
         
         for row in range(1, len(matrix)):
             for column in range(1, len(matrix[row])):
                 cell = matrix[row][column]
                 interactions = get_interactions(cell)
-                for i in range(8):
+                for i in range(len(INTERACTION_LABELS)):
                     reactives[row][i] += interactions[i]
 
         result_list = list(reactives.values())
@@ -689,9 +702,6 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
     # Calculate stacked data if necessary
     if stacked or show_pie_chart:
         data, indices = stack_reactives(matrix=matrix, axis=axis)
-        labels = [
-            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", "Other_Interactions"
-        ]
         transposed_data = transpose_matrix(data)
 
     # Plot pie chart if requested
@@ -700,24 +710,24 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         total_interactions = [sum(transposed_data[i]) for i in range(len(transposed_data))]
 
         # Filter out interactions with zero counts
-        non_zero_interactions = [(label, total) for label, total in zip(labels, total_interactions) if total > 0]
+        non_zero_interactions = [(label, total, colors[i]) for i, (label, total) in enumerate(zip(INTERACTION_LABELS, total_interactions)) if total > 0]
 
         # Prepare pie chart data
         if non_zero_interactions:
-            labels_pie, sizes = zip(*non_zero_interactions)
+            labels_pie, sizes, pie_colors = zip(*non_zero_interactions)
         else:
-            labels_pie, sizes = [], []
+            labels_pie, sizes, pie_colors = [], [], []
 
         fig, ax_pie = plt.subplots(figsize=(10, 6))
 
         # Plotting the pie chart without labels around it
-        wedges, texts, autotexts = ax_pie.pie(sizes, labels=None, autopct='%1.1f%%', startangle=140)
+        wedges, texts, autotexts = ax_pie.pie(sizes, labels=None, colors=pie_colors, autopct='%1.1f%%', startangle=140)
 
         # Set the title of the pie chart
         ax_pie.set_title('Interaction Percentages')
 
-        # Adding a legend with only the non-zero interactions
-        ax_pie.legend(labels_pie, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+        # Adding a legend with all possible interaction labels, regardless of their values
+        ax_pie.legend(INTERACTION_LABELS, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
 
     else:
         # Create a new figure for the bar chart
@@ -727,7 +737,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
             bars = []
             bottoms = [0] * len(indices)
             for index, group in enumerate(transposed_data):
-                bars.append(ax.bar(indices, group, bottom=bottoms, label=labels[index]))
+                bars.append(ax.bar(indices, group, bottom=bottoms, label=INTERACTION_LABELS[index], color=colors[index]))
                 bottoms = [i + j for i, j in zip(bottoms, group)]
 
             ax.set_xticks(range(len(indices)))
@@ -738,7 +748,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
             max_y = max([sum(col) for col in data])
         else:
             data = sort_matrix(matrix, axis, count=True)
-            ax.bar(data[0], data[1])
+            ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
 
             max_y = max(data[1])
 
@@ -762,7 +772,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
                 index = sel.index
                 total = sum(transposed_data[i][index] for i in range(len(transposed_data)))
                 percentages = [transposed_data[i][index] / total * 100 if total != 0 else 0 for i in range(len(transposed_data))]
-                annotation_text = "\n".join([f"{labels[i]}: {percentages[i]:.1f}%" for i in range(len(labels))])
+                annotation_text = "\n".join([f"{INTERACTION_LABELS[i]}: {percentages[i]:.1f}%" for i in range(len(INTERACTION_LABELS))])
                 sel.annotation.set_text(annotation_text)
                 sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
 
@@ -772,7 +782,6 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
     else:
         plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
         plt.close(fig)  # Close the figure after saving to avoid display overlap
-
 
 def filter_by_interaction(matrix: list, interactions: list, save: str = None) -> list:
     """
