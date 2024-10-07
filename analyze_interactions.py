@@ -613,10 +613,13 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
 
     return selection
 
-def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False) -> None:
-    
+import matplotlib.pyplot as plt
+import mplcursors
+from matplotlib.ticker import MaxNLocator
+
+def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False, show_pie_chart: bool = False) -> None:
     """
-    Plots a bar chart based on selected rows or columns of a matrix and saves it as a PNG file.
+    Plots a bar chart or pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
 
     Args:
         matrix (list of lists): The matrix containing interaction data.
@@ -627,6 +630,7 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         title (str, optional): Title of the plot. Defaults to "Protein-drug interactions".
         stacked (bool, optional): If True, creates a stacked bar chart. Defaults to False.
         save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
+        show_pie_chart (bool, optional): If True, shows a pie chart instead of a bar chart. Defaults to False.
 
     Returns:
         None
@@ -682,65 +686,93 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         result_list = list(reactives.values())
         return result_list, indices
 
-    # Create a new figure
-    fig, ax = plt.subplots(num=plot_name, figsize=(12, 6))
-
-    if stacked:
-        bars = []
+    # Calculate stacked data if necessary
+    if stacked or show_pie_chart:
         data, indices = stack_reactives(matrix=matrix, axis=axis)
         labels = [
             "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", "Other_Interactions"
         ]
-
         transposed_data = transpose_matrix(data)
-        bottoms = [0] * len(indices)
-        for index, group in enumerate(transposed_data):
-            bars.append(ax.bar(indices, group, bottom=bottoms, label=labels[index]))
-            bottoms = [i + j for i, j in zip(bottoms, group)]
 
-        ax.set_xticks(range(len(indices)))
-        ax.set_xticklabels(indices)
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+    # Plot pie chart if requested
+    if show_pie_chart:
+        # Sum up the total interactions for each type
+        total_interactions = [sum(transposed_data[i]) for i in range(len(transposed_data))]
 
-        max_y = max([sum(col) for col in data])
+        # Filter out interactions with zero counts
+        non_zero_interactions = [(label, total) for label, total in zip(labels, total_interactions) if total > 0]
+
+        # Prepare pie chart data
+        if non_zero_interactions:
+            labels_pie, sizes = zip(*non_zero_interactions)
+        else:
+            labels_pie, sizes = [], []
+
+        fig, ax_pie = plt.subplots(figsize=(10, 6))
+
+        # Plotting the pie chart without labels around it
+        wedges, texts, autotexts = ax_pie.pie(sizes, labels=None, autopct='%1.1f%%', startangle=140)
+
+        # Set the title of the pie chart
+        ax_pie.set_title('Interaction Percentages')
+
+        # Adding a legend with only the non-zero interactions
+        ax_pie.legend(labels_pie, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+
     else:
-        data = sort_matrix(matrix, axis, count=True)
-        ax.bar(data[0], data[1])
-        
-        max_y = max(data[1])
-    
-    ax.set_ylim(0, max_y * 1.1)
+        # Create a new figure for the bar chart
+        fig, ax = plt.subplots(num=plot_name, figsize=(12, 6))
 
-    ax.set_ylabel(label_y)
-    if label_x is  None:
-        residues_axis = _get_residues_axis(matrix=matrix)
-        label_x = "Interacting protein residues" if residues_axis == axis else "PDB complexes"
-    ax.set_xlabel(label_x)
-    ax.set_title(title)
+        if stacked:
+            bars = []
+            bottoms = [0] * len(indices)
+            for index, group in enumerate(transposed_data):
+                bars.append(ax.bar(indices, group, bottom=bottoms, label=labels[index]))
+                bottoms = [i + j for i, j in zip(bottoms, group)]
 
-    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+            ax.set_xticks(range(len(indices)))
+            ax.set_xticklabels(indices)
+            # Adding legend for all labels used in the bar chart
+            ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
 
-    plt.xticks(rotation=90, ha='center')
-    plt.tight_layout()
+            max_y = max([sum(col) for col in data])
+        else:
+            data = sort_matrix(matrix, axis, count=True)
+            ax.bar(data[0], data[1])
 
-    # Add interactive cursors to display percentages for stacked bars
-    if stacked:
-        cursor = mplcursors.cursor(bars, hover=True)
+            max_y = max(data[1])
 
-        @cursor.connect("add")
-        def on_add(sel):
-            index = sel.index
-            total = sum(transposed_data[i][index] for i in range(len(transposed_data)))
-            percentages = [transposed_data[i][index] / total * 100 if total != 0 else 0 for i in range(len(transposed_data))]
-            annotation_text = "\n".join([f"{labels[i]}: {percentages[i]:.1f}%" for i in range(len(labels))])
-            sel.annotation.set_text(annotation_text)
-            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
+        ax.set_ylim(0, max_y * 1.1)
+        ax.set_ylabel(label_y)
+        if label_x is None:
+            residues_axis = _get_residues_axis(matrix=matrix)
+            label_x = "Interacting protein residues" if residues_axis == axis else "PDB complexes"
+        ax.set_xlabel(label_x)
+        ax.set_title(title)
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+        plt.xticks(rotation=90, ha='center')
+        plt.tight_layout()
 
+        # Add interactive cursors to display percentages for stacked bars
+        if stacked:
+            cursor = mplcursors.cursor(bars, hover=True)
+
+            @cursor.connect("add")
+            def on_add(sel):
+                index = sel.index
+                total = sum(transposed_data[i][index] for i in range(len(transposed_data)))
+                percentages = [transposed_data[i][index] / total * 100 if total != 0 else 0 for i in range(len(transposed_data))]
+                annotation_text = "\n".join([f"{labels[i]}: {percentages[i]:.1f}%" for i in range(len(labels))])
+                sel.annotation.set_text(annotation_text)
+                sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
+
+    # Show or save the plot
     if not save:
         plt.show()
     else:
         plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
         plt.close(fig)  # Close the figure after saving to avoid display overlap
+
 
 def filter_by_interaction(matrix: list, interactions: list, save: str = None) -> list:
     """
