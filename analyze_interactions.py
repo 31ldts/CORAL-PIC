@@ -104,27 +104,6 @@ def _verify_dimensions(matrix: list):
     if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
         raise ValueError("There are not interactions on the matrix.")
 
-def _remove_void(matrix: list):
-    def _remove_void_rows(matrix: list) -> list:
-        changes = 0
-        for row in range(1, len(matrix)):
-            if all(column == '-' for column in matrix[row - changes][1:]):
-                matrix.pop(row - changes)
-                changes += 1
-        return matrix
-
-    # Remove empty rows
-    matrix = _remove_void_rows(matrix)
-    
-    # Transpose the matrix, remove empty columns (which are now rows)
-    matrix = transpose_matrix(matrix=matrix)
-    matrix = _remove_void_rows(matrix)
-    
-    # Transpose back to restore original format
-    matrix = transpose_matrix(matrix=matrix)
-    
-    return matrix
-
 ##################
 # Public Methods #
 ##################
@@ -289,7 +268,7 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
         }
         interaction_code = interaction_map.get(interaction, '8')
 
-        if text == "-":
+        if text == "":
             return f"{interaction_code} |{atoms}|"
         
         content = text.replace(", ", "").split("|")[:-1]
@@ -387,7 +366,7 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
         """
         for row_index, row in enumerate(matrix):
             for cell_index, cell in enumerate(row):
-                if cell != '-':
+                if cell != '':
                     # Split the cell into individual interactions
                     interactions = cell.split(", ")
 
@@ -472,7 +451,7 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
 
                         # Ensure matrix size and modify cell
                         if len(matrix) <= column:
-                            matrix.append(["-"] * len(files))
+                            matrix.append([""] * len(files))
 
                         matrix[column][index] = modify_cell(matrix[column][index], interaction, atoms)
                 
@@ -620,13 +599,13 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
     # Create the selection matrix with the chosen rows/columns
     selection = [matrix[0]] + [matrix[row] for row in reactives]
 
+    # Sort the selection by residue chain if specified
+    if residue_chain:
+        selection = sort_by_residue(matrix=matrix)
+
     # Transpose the selection back if it was initially transposed for columns
     if axis == 'columns':
         selection = transpose_matrix(matrix=selection)
-    
-    # Sort the selection by residue chain if specified
-    if residue_chain:
-        selection = sort_by_residue(matrix=selection)
 
     # Save the matrix if a save path is provided
     if save:
@@ -826,7 +805,7 @@ def filter_by_interaction(matrix: list, interactions: list, save: str = None) ->
             cell = filtered[i][j]
             
             # If the cell is not empty ('-'), process it
-            if cell != '-':
+            if not (cell == '-' or cell == ''):
                 sections = cell.split(", ")
                 cell = ""
                 
@@ -924,7 +903,7 @@ def filter_by_subunit(matrix: list, subunits: list, save: str = None) -> list:
                 cell = filtered[i][j]
                 
                 # Process non-empty cells
-                if cell != '-':
+                if not (cell == '-' or cell == ''):
                     sections = cell.split(", ")
                     cell = ""
                     
@@ -963,10 +942,31 @@ def filter_by_subunit(matrix: list, subunits: list, save: str = None) -> list:
         filtered = transpose_matrix(matrix=filtered)
 
     # Remove any empty rows or columns
-    filtered = _remove_void(matrix=filtered)
+    #filtered = _remove_void(matrix=filtered)
 
     # Save the filtered matrix to a file if a save path is provided
     if save:
         save_matrix(matrix=filtered, filename=save)
 
     return filtered
+
+def remove_void(matrix: list):
+    def _remove_void_rows(matrix: list) -> list:
+        changes = 0
+        for row in range(1, len(matrix)):
+            if all(column == '-' or column == '' for column in matrix[row - changes][1:]):
+                matrix.pop(row - changes)
+                changes += 1
+        return matrix
+
+    # Remove empty rows
+    matrix = _remove_void_rows(matrix)
+    
+    # Transpose the matrix, remove empty columns (which are now rows)
+    matrix = transpose_matrix(matrix=matrix)
+    matrix = _remove_void_rows(matrix)
+    
+    # Transpose back to restore original format
+    matrix = transpose_matrix(matrix=matrix)
+    
+    return matrix
