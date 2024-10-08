@@ -1,14 +1,36 @@
 import csv
 import os
 from matplotlib import pyplot as plt
-from typing import Union
-import numpy as np
+#from typing import Union
+#import numpy as np
 from matplotlib.ticker import MaxNLocator
 import mplcursors
 import copy
 from collections import Counter
 import re
 from colorama import Fore, init
+#import pandas as pd
+#import json
+import pickle
+
+####################
+# Global Variables #
+####################
+
+# Labels for interaction types
+INTERACTION_LABELS = [
+    "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
+    "Ionic_PROT", "Ionic_LIG", "Metal Acceptor", "Pi/Cation", "Other_Interactions"
+]
+
+# List of colors
+COLORS = [
+    "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+    "#9467bd", "#8c564b"
+]
+
+CONFIG_FILE = 'config.pkl'
+
 
 # Initialize colorama
 init(autoreset=True)
@@ -103,6 +125,17 @@ def _verify_dimensions(matrix: list):
     """
     if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
         raise ValueError("There are not interactions on the matrix.")
+
+def _load_config():
+    """Loads interaction labels and colors from a serialized file."""
+    global INTERACTION_LABELS, COLORS
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'rb') as f:
+            config = pickle.load(f)
+            INTERACTION_LABELS = config.get('INTERACTION_LABELS', INTERACTION_LABELS)
+            COLORS = config.get('COLORS', COLORS)
+    else:
+        print("Config file not found. Using default values.")
 
 ##################
 # Public Methods #
@@ -252,42 +285,47 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
 
     def modify_cell(text: str, interaction: str, atoms: str) -> str:
         """
-        Updates cell content by adding interaction type and involved atoms.
+        Updates the cell content by adding the interaction type and the involved atoms.
 
         Args:
             text (str): Current cell content.
-            interaction (str): Interaction type.
+            interaction (str): The interaction type.
             atoms (str): Atoms involved in the interaction.
 
         Returns:
-            str: Updated cell content.
+            str: The updated cell content.
         """
-        interaction_map = {
-            "Hydrophobic": '1', "Aromatic_Face/Face": '2', "Aromatic_Edge/Face": '3',
-            "HBond_PROT": '4', "HBond_LIG": '5', "Ionic_PROT": '6', "Ionic_LIG": '7',
-            "Metal Acceptor": '8', "Pi/Cation": '9'
-        }
-        interaction_code = interaction_map.get(interaction, '10')
+        # Create an interaction_map based on the global INTERACTION_LABELS list
+        interaction_map = {label: str(index + 1) for index, label in enumerate(INTERACTION_LABELS)}
+        
+        # Assign the interaction code based on the interaction_map, or default to the last value
+        interaction_code = interaction_map.get(interaction, str(len(INTERACTION_LABELS)))
 
+        # If the text is empty, add the interaction with the provided atoms
         if text == "":
             return f"{interaction_code} |{atoms}|"
-        
+
+        # Split the cell content and remove empty parts, keeping existing interactions
         content = text.replace(", ", "").split("|")[:-1]
         exists = False
         cell = ''
 
+        # Check if the interaction already exists and add atoms to the corresponding interaction
         for index, segment in enumerate(content):
             if index % 2 == 0 and interaction_code == segment.strip():
                 content[index + 1] += f" {atoms}"
                 exists = True
                 break
 
+        # Rebuild the cell content, preserving existing interactions
         cell = ', '.join(f"{content[i]}|{content[i+1]}|" for i in range(0, len(content), 2))
         
+        # If the interaction didn't exist, append it at the end
         if not exists:
             cell += f", {interaction_code} |{atoms}|"
         
         return cell
+
 
     def read_txt_file(file_name: str) -> list:
         """
@@ -614,18 +652,6 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
 
     return selection
 
-# Definimos una variable global con las etiquetas de los tipos de interacciones
-INTERACTION_LABELS = [
-    "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
-    "Ionic_PROT", "Ionic_LIG", "Metal Acceptor", "Pi/Cation", "Other_Interactions"
-]
-
-# Definimos una variable global con las etiquetas de los tipos de interacciones
-INTERACTION_LABELS = [
-    "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
-    "Ionic_PROT", "Ionic_LIG", "Metal Acceptor", "Pi/Cation", "Other_Interactions"
-]
-
 def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, label_y: str = "Number of intermolecular interactions", title: str = "Protein-drug interactions", stacked: bool = False, save: bool = False, show_pie_chart: bool = False, colors: list = None) -> None:
     """
     Plots a bar chart or pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
@@ -646,9 +672,9 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         None
     """
 
-    # Define default colors if not provided
     if colors is None:
-        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # Use default Matplotlib colors
+        _load_config()
+        colors = COLORS
 
     # Ensure the number of colors matches the number of interaction labels
     if len(colors) < len(INTERACTION_LABELS):
@@ -1011,3 +1037,66 @@ def remove_void(matrix: list):
     matrix = transpose_matrix(matrix=matrix)
     
     return matrix
+
+def update_interactions_and_colors(interactions=None, colors=None, reset=False):
+    """
+    Updates global interaction labels and colors based on provided lists.
+    
+    Args:
+        interactions (list of str, optional): List of interaction labels to be updated.
+        colors (list of str, optional): List of colors in hexadecimal format.
+        reset (bool): If True, reset the configuration to default values.
+    
+    Returns:
+        None
+    """
+    def save_config():
+        """Saves current interaction labels and colors to a serialized file."""
+        global INTERACTION_LABELS, COLORS
+        with open(CONFIG_FILE, 'wb') as f:
+            pickle.dump({
+                'INTERACTION_LABELS': INTERACTION_LABELS,
+                'COLORS': COLORS
+            }, f)
+
+    def is_valid_hex_color(color):
+        """Validates if the given color is in hexadecimal format."""
+        return bool(re.match(r'^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$', color))
+
+    def reset_configuration():
+        """Resets the configuration to default values."""
+        global INTERACTION_LABELS, COLORS
+        INTERACTION_LABELS = [
+            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", 
+            "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", 
+            "Metal Acceptor", "Pi/Cation", "Other_Interactions"
+        ]
+        COLORS = [
+            "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+            "#9467bd", "#8c564b"
+        ]
+        save_config()  # Save the default values
+    
+    if reset:
+        reset_configuration()
+        print("Configuration reset to default values.")
+        return
+
+    # Load existing configuration if the file exists
+    _load_config()
+
+    # Update global interactions if provided
+    if interactions is not None:
+        global INTERACTION_LABELS
+        INTERACTION_LABELS = list(interactions)  # Update with new values
+
+    # Update global colors if provided
+    if colors is not None:
+        global COLORS
+        if all(is_valid_hex_color(color) for color in colors):
+            COLORS = list(colors)  # Update with new values
+        else:
+            print("Some colors are not valid hexadecimal colors. They will not be updated.")
+
+    # Save the updated configuration
+    save_config()
