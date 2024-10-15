@@ -1,21 +1,17 @@
 import csv
 import os
 from matplotlib import pyplot as plt
-#from typing import Union
-#import numpy as np
 from matplotlib.ticker import MaxNLocator
 import mplcursors
 import copy
 from collections import Counter
 import re
 from colorama import Fore, init
-#import pandas as pd
-#import json
 import pickle
 
-####################
-# Global Variables #
-####################
+###########
+# Globals #
+###########
 
 # Labels for interaction types
 INTERACTION_LABELS = [
@@ -34,7 +30,6 @@ CONFIG_FILE = 'config.pkl'
 # Constants for delimiters
 SAME_DELIM = ', '
 DIFF_DELIM = '; '
-
 
 # Initialize colorama
 init(autoreset=True)
@@ -141,9 +136,9 @@ def _load_config():
     else:
         print("Config file not found. Using default values.")
 
-##################
-# Public Methods #
-##################
+#################################
+# Public Methods: Configuration #
+#################################
 
 def change_directory(path: str) -> None:
     """
@@ -166,6 +161,73 @@ def change_directory(path: str) -> None:
     # Check if the new saving directory exists
     if not os.path.exists(saving_directory):
         raise ValueError("The saving directory must exist inside the project.")
+
+def update_interactions_and_colors(interactions=None, colors=None, reset=False):
+    """
+    Updates global interaction labels and colors based on provided lists.
+    
+    Args:
+        interactions (list of str, optional): List of interaction labels to be updated.
+        colors (list of str, optional): List of colors in hexadecimal format.
+        reset (bool): If True, reset the configuration to default values.
+    
+    Returns:
+        None
+    """
+    def save_config():
+        """Saves current interaction labels and colors to a serialized file."""
+        global INTERACTION_LABELS, COLORS
+        with open(CONFIG_FILE, 'wb') as f:
+            pickle.dump({
+                'INTERACTION_LABELS': INTERACTION_LABELS,
+                'COLORS': COLORS
+            }, f)
+
+    def is_valid_hex_color(color):
+        """Validates if the given color is in hexadecimal format."""
+        return bool(re.match(r'^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$', color))
+
+    def reset_configuration():
+        """Resets the configuration to default values."""
+        global INTERACTION_LABELS, COLORS
+        INTERACTION_LABELS = [
+            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", 
+            "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", 
+            "Metal Acceptor", "Pi/Cation", "Other_Interactions"
+        ]
+        COLORS = [
+            "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+            "#9467bd", "#8c564b"
+        ]
+        save_config()  # Save the default values
+    
+    if reset:
+        reset_configuration()
+        print("Configuration reset to default values.")
+        return
+
+    # Load existing configuration if the file exists
+    _load_config()
+
+    # Update global interactions if provided
+    if interactions is not None:
+        global INTERACTION_LABELS
+        INTERACTION_LABELS = list(interactions)  # Update with new values
+
+    # Update global colors if provided
+    if colors is not None:
+        global COLORS
+        if all(is_valid_hex_color(color) for color in colors):
+            COLORS = list(colors)  # Update with new values
+        else:
+            print("Some colors are not valid hexadecimal colors. They will not be updated.")
+
+    # Save the updated configuration
+    save_config()
+
+#################################
+# Public Methods: Functionality #
+#################################
 
 def transpose_matrix(matrix: list, save: str = None) -> list:
     """
@@ -1070,66 +1132,3 @@ def remove_void(matrix: list):
     matrix = transpose_matrix(matrix=matrix)
     
     return matrix
-
-def update_interactions_and_colors(interactions=None, colors=None, reset=False):
-    """
-    Updates global interaction labels and colors based on provided lists.
-    
-    Args:
-        interactions (list of str, optional): List of interaction labels to be updated.
-        colors (list of str, optional): List of colors in hexadecimal format.
-        reset (bool): If True, reset the configuration to default values.
-    
-    Returns:
-        None
-    """
-    def save_config():
-        """Saves current interaction labels and colors to a serialized file."""
-        global INTERACTION_LABELS, COLORS
-        with open(CONFIG_FILE, 'wb') as f:
-            pickle.dump({
-                'INTERACTION_LABELS': INTERACTION_LABELS,
-                'COLORS': COLORS
-            }, f)
-
-    def is_valid_hex_color(color):
-        """Validates if the given color is in hexadecimal format."""
-        return bool(re.match(r'^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$', color))
-
-    def reset_configuration():
-        """Resets the configuration to default values."""
-        global INTERACTION_LABELS, COLORS
-        INTERACTION_LABELS = [
-            "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", 
-            "HBond_PROT", "HBond_LIG", "Ionic_PROT", "Ionic_LIG", 
-            "Metal Acceptor", "Pi/Cation", "Other_Interactions"
-        ]
-        COLORS = [
-            "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-            "#9467bd", "#8c564b"
-        ]
-        save_config()  # Save the default values
-    
-    if reset:
-        reset_configuration()
-        print("Configuration reset to default values.")
-        return
-
-    # Load existing configuration if the file exists
-    _load_config()
-
-    # Update global interactions if provided
-    if interactions is not None:
-        global INTERACTION_LABELS
-        INTERACTION_LABELS = list(interactions)  # Update with new values
-
-    # Update global colors if provided
-    if colors is not None:
-        global COLORS
-        if all(is_valid_hex_color(color) for color in colors):
-            COLORS = list(colors)  # Update with new values
-        else:
-            print("Some colors are not valid hexadecimal colors. They will not be updated.")
-
-    # Save the updated configuration
-    save_config()
