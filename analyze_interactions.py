@@ -31,6 +31,10 @@ COLORS = [
 
 CONFIG_FILE = 'config.pkl'
 
+# Constants for delimiters
+SAME_DELIM = ', '
+DIFF_DELIM = '; '
+
 
 # Initialize colorama
 init(autoreset=True)
@@ -306,26 +310,25 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
             return f"{interaction_code} |{atoms}|"
 
         # Split the cell content and remove empty parts, keeping existing interactions
-        content = text.replace(", ", "").split("|")[:-1]
+        content = text.replace(DIFF_DELIM, "").split("|")[:-1]
         exists = False
         cell = ''
 
         # Check if the interaction already exists and add atoms to the corresponding interaction
         for index, segment in enumerate(content):
             if index % 2 == 0 and interaction_code == segment.strip():
-                content[index + 1] += f" {atoms}"
+                content[index + 1] += f"{SAME_DELIM}{atoms}"
                 exists = True
                 break
 
         # Rebuild the cell content, preserving existing interactions
-        cell = ', '.join(f"{content[i]}|{content[i+1]}|" for i in range(0, len(content), 2))
+        cell = DIFF_DELIM.join(f"{content[i]}|{content[i+1]}|" for i in range(0, len(content), 2))
         
         # If the interaction didn't exist, append it at the end
         if not exists:
-            cell += f", {interaction_code} |{atoms}|"
+            cell += f"{DIFF_DELIM}{interaction_code} |{atoms}|"
         
         return cell
-
 
     def read_txt_file(file_name: str) -> list:
         """
@@ -363,7 +366,7 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
             list: Matrix with adjusted subunit information.
         """
         def reduce_strings_in_even_indices(atoms: str, subunits: int) -> str:
-            pattern = r'[() ]'
+            pattern = r'[(), ]'
             result = list(filter(None, re.split(pattern, atoms)))
             even_index_strings = [result[i] for i in range(0, len(result), 2)]
             string_count = Counter(even_index_strings)
@@ -375,19 +378,45 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
                 if i % 2 == 0:
                     if string_count[string] >= subunits:
                         if string not in added_strings:
-                            text += f"{string} "
+                            text += f"{string}{SAME_DELIM}"
                             added_strings.add(string)
                     else:
-                        text += f"{string}({result[i+1]}) "
-            return '|' + text.strip() + '|'
+                        text += f"{string}({result[i+1]}){SAME_DELIM}"
+            if text.endswith(SAME_DELIM):
+                text = text[:-2]
+            return '|' + text + '|'
         
+        def remove_duplicate_atoms(atoms: str) -> str:
+            """
+            Removes duplicate atoms from the input string.
+
+            Args:
+                atoms (str): A string containing atom interactions separated by SAME_DELIM.
+
+            Returns:
+                str: A formatted string with unique atoms, enclosed in '|' delimiters.
+            """
+            # Split the input string by SAME_DELIM to get individual atoms.
+            sections = atoms.split(SAME_DELIM)
+
+            # Use a set to keep only unique atoms in their original order.
+            unique_atoms = list(dict.fromkeys(sections))
+
+            # Join the unique atoms back into a single string separated by SAME_DELIM.
+            text = SAME_DELIM.join(unique_atoms)
+
+            # Return the formatted string enclosed in '|' delimiters.
+            return f"|{text}|"
+
         for row in range(len(matrix)):
             for column in range(len(matrix[row])):
                 cell = matrix[row][column]
-                if cell != '-':
+                '''if cell == '1 |CB-Cl24(A), CB-C4(A)|; 2 |DuAr-DuAr(A), DuAr-DuAr(A)|':
+                    au = 0'''
+                if cell != '':
                     sections = cell.split("|")
                     text = ''.join(
-                        sections[i-1] + reduce_strings_in_even_indices(sections[i], len(subunits))
+                        sections[i-1] + remove_duplicate_atoms(sections[i])
                         for i in range(1, len(sections), 2)
                     )
                     matrix[row][column] = text
@@ -407,14 +436,14 @@ def analyze_files(directory: str, activity_file: str = None, protein: bool = Tru
             for cell_index, cell in enumerate(row):
                 if cell != '':
                     # Split the cell into individual interactions
-                    interactions = cell.split(", ")
+                    interactions = cell.split(DIFF_DELIM)
 
                     # Sort the interactions based on the number that follows the initial space
                     if len(interactions) > 1:
                         interactions = sorted(interactions, key=lambda x: int(x.split(" ")[0]))
 
                     # Join the sorted interactions back and update the cell
-                    matrix[row_index][cell_index] = ", ".join(interactions)
+                    matrix[row_index][cell_index] = DIFF_DELIM.join(interactions)
 
         return matrix
 
@@ -542,7 +571,7 @@ def sort_matrix(matrix: list, axis: str = 'rows', thr_interactions: int = None, 
         interactions = 0
         sections = cell.split("|")
         for index in range(1, len(sections), 2):
-            interactions += len(sections[index].split(" "))
+            interactions += len(sections[index].split(SAME_DELIM))
         return interactions
     
     def sort_by_residue(matrix: list) -> list:
@@ -693,8 +722,8 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         interactions = [0] * len(INTERACTION_LABELS)
         sections = cell.split("|")
         for index in range(1, len(sections), 2):
-            interaction = int(sections[index - 1].replace(" ", "").replace(",", ""))
-            interactions[interaction - 1] += len(sections[index].split(" "))
+            interaction = int(sections[index - 1].replace(DIFF_DELIM, "").replace(" ", ""))
+            interactions[interaction - 1] += len(sections[index].split(SAME_DELIM))
         return interactions
 
     def stack_reactives(matrix: list, axis: str) -> tuple[list, list]:
@@ -753,7 +782,8 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
         ax_pie.set_title('Interaction Percentages')
 
         # Adding a legend with all possible interaction labels, regardless of their values
-        ax_pie.legend(INTERACTION_LABELS, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+        labels = [label for label, count in zip(INTERACTION_LABELS, total_interactions) if count != 0]
+        ax_pie.legend(labels, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
 
     else:
         # Create a new figure for the bar chart
@@ -767,7 +797,10 @@ def plot_matrix(matrix: list, plot_name: str, axis: str, label_x: str = None, la
                 bottoms = [i + j for i, j in zip(bottoms, group)]
 
             ax.set_xticks(range(len(indices)))
-            ax.set_xticklabels(indices)
+            if _get_residues_axis(matrix=matrix) == axis:
+                ax.set_xticklabels(indices)
+            else:
+                ax.set_xticklabels(item.split()[0] for item in indices)
             # Adding legend for all labels used in the bar chart
             ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
 
@@ -873,18 +906,18 @@ def filter_by_interaction(matrix: list, interactions: list, save: str = None) ->
             
             # If the cell is not empty ('-'), process it
             if not (cell == '-' or cell == ''):
-                sections = cell.split(", ")
+                sections = cell.split(DIFF_DELIM)
                 cell = ""
                 
                 # Iterate through the sections in the cell to filter valid interactions
                 for section in sections:
                     # Check if the first number in the section is in the valid interaction list
-                    if int(section.split(" ")[0]) in interactions:
+                    if int(section.split(' ')[0]) in interactions:
                         # Add the section to the cell if it contains a valid interaction
                         if cell == '':
                             cell = section
                         else:
-                            cell += ', ' + section
+                            cell += DIFF_DELIM + section
                         changes = True
                 
                 # Update the cell with the filtered sections or set it to '-' if empty
@@ -971,7 +1004,7 @@ def filter_by_subunit(matrix: list, subunits: list, save: str = None) -> list:
                 
                 # Process non-empty cells
                 if not (cell == '-' or cell == ''):
-                    sections = cell.split(", ")
+                    sections = cell.split(DIFF_DELIM)
                     cell = ""
                     
                     # Iterate through each section in the cell
@@ -981,7 +1014,7 @@ def filter_by_subunit(matrix: list, subunits: list, save: str = None) -> list:
                         # Filter out unwanted interactions
                         for index in range(1, len(separators)):
                             if index % 2 != 0:
-                                interactions = separators[index].split(' ')
+                                interactions = separators[index].split(SAME_DELIM)
                                 subchanges = 0
                                 
                                 # Remove interactions not in the valid subunits
@@ -994,7 +1027,7 @@ def filter_by_subunit(matrix: list, subunits: list, save: str = None) -> list:
                                 # Rebuild the cell if there are valid interactions
                                 if interactions:
                                     cell += separators[index - 1] + '|'
-                                    cell += ' '.join(interactions) + ' |, '
+                                    cell += SAME_DELIM.join(interactions) + ' |' + DIFF_DELIM
                                     
                     # Update the cell with filtered interactions
                     cell = cell[:-2]  # Remove trailing comma and space
