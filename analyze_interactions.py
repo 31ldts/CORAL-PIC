@@ -5,7 +5,6 @@ from matplotlib.ticker import MaxNLocator
 import mplcursors
 import copy
 import re
-from colorama import Fore, init
 
 ###########
 # Globals #
@@ -24,11 +23,20 @@ COLORS = [
 ]
 
 # Constants for delimiters
-SAME_DELIM = ', '
-DIFF_DELIM = '; '
+SAME_DELIM = ', '       # Delimiter used to separate interactions of the same type.
+DIFF_DELIM = '; '       # Delimiter used to separate interactions of different types.
+GROUP_DELIM = '|'        # Delimiter used to group interactions of the same type.
 
-# Initialize colorama
-init(autoreset=True)
+# Constants for cell values
+EMPTY_CELL = ''         # Represents an empty cell value from the beginning.
+EMPTY_DASH_CELL = '-'   # Represents a cell that is considered empty due to filtering.
+
+###########
+# Lambdas #
+###########
+
+is_not_empty_or_dash = lambda cell: not (cell == EMPTY_DASH_CELL or cell == EMPTY_CELL)
+
 
 saving_directory = os.getcwd()
 
@@ -116,7 +124,10 @@ class AnalyzeInteractions:
     # Public Methods: Configuration #
     #################################
 
-    def change_directory(self, path: str) -> None:
+    def change_directory(
+            self, 
+            path: str
+            ) -> None:
         """
         Changes the saving directory to a specified subdirectory within the project.
 
@@ -129,6 +140,13 @@ class AnalyzeInteractions:
         Raises:
             ValueError: If the subdirectory does not exist within the project.
         """
+        
+        self._check_variable_types(
+            variables=[path],
+            expected_types=[str],
+            variable_names=['path']
+        )
+
         # Construct the new path
         new_path = os.path.join(os.getcwd(), path)
 
@@ -139,30 +157,37 @@ class AnalyzeInteractions:
         # Update the saving directory
         self.saving_directory = new_path
 
-    def update_interactions_and_colors(self, interactions: list[str] = None, colors: list[str] = None, reset: bool = False) -> None:
+    def set_plot_config(
+            self, 
+            interactions: list[str] = None, 
+            colors: list[str] = None, 
+            reset: bool = False
+            ) -> None:
         """
         Updates interaction labels and colors or resets them to default values.
 
         Args:
-            interactions (list of str, optional): List of interaction labels to update.
-            colors (list of str, optional): List of colors in hexadecimal format.
-            reset (bool): If True, resets the configuration to default values.
+            interactions (list[str], optional): List of interaction labels to update.
+            colors (list[str], optional): List of colors in hexadecimal format.
+            reset (bool, optional): If True, resets the configuration to default values.
 
         Returns:
             None
+
+        Raises:
+            InvalidColorException: If any color in the provided list is not a valid hexadecimal value.
         """
 
         def is_valid_hex_color(color: str) -> bool:
             """
-            Checks if a given string is a valid hexadecimal color.
+            Validates if a string is a valid hexadecimal color.
 
             Args:
                 color (str): Color string to validate.
 
             Returns:
-                bool: True if the color is valid, False otherwise.
+                bool: True if the color is a valid hex value, False otherwise.
             """
-            # Regex to match valid hex colors (e.g., #FFFFFF or #FFF)
             return bool(re.match(r'^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$', color))
 
         def reset_configuration() -> None:
@@ -174,23 +199,28 @@ class AnalyzeInteractions:
             """
             self.interaction_labels = INTERACTION_LABELS
             self.colors = COLORS
-            print("Configuration reset to default values.")
 
-        # Perform a reset if requested
+        self._check_variable_types(
+            variables=[interactions, colors, reset],
+            expected_types=[(list, None.__class__), (list, None.__class__), bool],
+            variable_names=['interactions', 'colors', 'reset']
+        )
+
+        # Perform reset if requested
         if reset:
             reset_configuration()
             return
 
         # Update interaction labels if provided
-        if interactions is not None:
-            self.interaction_labels = list(interactions)
+        if interactions:
+            self.interaction_labels = interactions
 
         # Update colors if provided and valid
-        if colors is not None:
-            if all(is_valid_hex_color(color) for color in colors):
-                self.colors = list(colors)
-            else:
-                print("Some colors are invalid hexadecimal values. The update was skipped.")
+        if colors:
+            invalid_colors = [color for color in colors if not is_valid_hex_color(color)]
+            if invalid_colors:
+                raise InvalidColorException(invalid_colors)
+            self.colors = colors
 
     #################################
     # Public Methods: Functionality #
@@ -301,10 +331,10 @@ class AnalyzeInteractions:
 
             # If the text is empty, add the interaction with the provided atoms
             if text == "":
-                return f"{interaction_code} |{atoms}|"
+                return f"{interaction_code} {GROUP_DELIM}{atoms}{GROUP_DELIM}"
 
             # Split the cell content and remove empty parts, keeping existing interactions
-            content = text.replace(DIFF_DELIM, "").split("|")[:-1]
+            content = text.replace(DIFF_DELIM, "").split(GROUP_DELIM)[:-1]
             exists = False
             cell = ''
 
@@ -316,11 +346,11 @@ class AnalyzeInteractions:
                     break
 
             # Rebuild the cell content, preserving existing interactions
-            cell = DIFF_DELIM.join(f"{content[i]}|{content[i+1]}|" for i in range(0, len(content), 2))
+            cell = DIFF_DELIM.join(f"{content[i]}{GROUP_DELIM}{content[i+1]}{GROUP_DELIM}" for i in range(0, len(content), 2))
             
             # If the interaction didn't exist, append it at the end
             if not exists:
-                cell += f"{DIFF_DELIM}{interaction_code} |{atoms}|"
+                cell += f"{DIFF_DELIM}{interaction_code} {GROUP_DELIM}{atoms}{GROUP_DELIM}"
             
             return cell
 
@@ -385,13 +415,13 @@ class AnalyzeInteractions:
                 text = SAME_DELIM.join(unique_atoms)
 
                 # Return the formatted string enclosed in '|' delimiters.
-                return f"|{text}|"
+                return f"{GROUP_DELIM}{text}{GROUP_DELIM}"
 
             for row in range(len(matrix)):
                 for column in range(len(matrix[row])):
                     cell = matrix[row][column]
                     if cell != '':
-                        sections = cell.split("|")
+                        sections = cell.split(GROUP_DELIM)
                         text = ''.join(
                             sections[i-1] + remove_duplicate_atoms(sections[i])
                             for i in range(1, len(sections), 2)
@@ -476,7 +506,7 @@ class AnalyzeInteractions:
             if os.path.isfile(file_path):
                 content = read_txt_file(file_path)
                 for line in content:
-                    elements = line.split("|")
+                    elements = line.split(GROUP_DELIM)
                     if len(elements) == 10:
                         interaction = elements[0].strip().replace("\t", "")
                         residue = elements[3].strip().replace("\t", "")
@@ -582,7 +612,7 @@ class AnalyzeInteractions:
                 cell = filtered[i][j]
                 
                 # If the cell is not empty ('-'), process it
-                if not (cell == '-' or cell == ''):
+                if is_not_empty_or_dash(cell):
                     sections = cell.split(DIFF_DELIM)
                     cell = ""
                     
@@ -598,7 +628,7 @@ class AnalyzeInteractions:
                             changes = True
                     
                     # Update the cell with the filtered sections or set it to '-' if empty
-                    filtered[i][j] = cell if cell != '' else '-'
+                    filtered[i][j] = cell if cell != '' else EMPTY_DASH_CELL
         
         # If no changes were made, raise an error indicating no matching interactions were found
         if not changes:
@@ -685,13 +715,13 @@ class AnalyzeInteractions:
                     cell = filtered[i][j]
                     
                     # Process non-empty cells
-                    if not (cell == '-' or cell == ''):
+                    if is_not_empty_or_dash(cell=cell):
                         sections = cell.split(DIFF_DELIM)
                         cell = ""
                         
                         # Iterate through each section in the cell
                         for section in sections:
-                            separators = section.split('|')[:-1]
+                            separators = section.split(GROUP_DELIM)[:-1]
 
                             # Filter out unwanted interactions
                             for index in range(1, len(separators)):
@@ -708,12 +738,12 @@ class AnalyzeInteractions:
 
                                     # Rebuild the cell if there are valid interactions
                                     if interactions:
-                                        cell += separators[index - 1] + '|'
-                                        cell += SAME_DELIM.join(interactions) + ' |' + DIFF_DELIM
+                                        cell += separators[index - 1] + GROUP_DELIM
+                                        cell += SAME_DELIM.join(interactions) + ' ' + GROUP_DELIM + DIFF_DELIM
                                         
                         # Update the cell with filtered interactions
                         cell = cell[:-2]  # Remove trailing comma and space
-                        filtered[i][j] = cell if cell else '-'
+                        filtered[i][j] = cell if cell else EMPTY_DASH_CELL
         
         # Raise an error if no changes were made (no desired subunits found)
         if changes == 0:
@@ -779,7 +809,7 @@ class AnalyzeInteractions:
                 list: A list of interaction counts for each interaction type.
             """
             interactions = [0] * len(self.interaction_labels)
-            sections = cell.split("|")
+            sections = cell.split(GROUP_DELIM)
             for index in range(1, len(sections), 2):
                 interaction = int(sections[index - 1].replace(DIFF_DELIM, "").replace(" ", ""))
                 interactions[interaction - 1] += len(sections[index].split(SAME_DELIM))
@@ -908,7 +938,7 @@ class AnalyzeInteractions:
         def _remove_void_rows(matrix: list[list[str]]) -> list[list[str]]:
             changes = 0
             for row in range(1, len(matrix)):
-                if all(column == '-' or column == '' for column in matrix[row - changes][1:]):
+                if all(not is_not_empty_or_dash(cell=column) for column in matrix[row - changes][1:]):
                     matrix.pop(row - changes)
                     changes += 1
             return matrix
@@ -994,7 +1024,7 @@ class AnalyzeInteractions:
                 int: Total number of interactions in the cell.
             """
             interactions = 0
-            sections = cell.split("|")
+            sections = cell.split(GROUP_DELIM)
             for index in range(1, len(sections), 2):
                 interactions += len(sections[index].split(SAME_DELIM))
             return interactions
@@ -1164,4 +1194,13 @@ class EmptyDirectoryException(Exception):
     def __init__(self, path):
         self.path = path
         self.message = f"Directory '{path}' is empty"
+        super().__init__(self.message)
+
+class InvalidColorException(Exception):
+    """
+    Exception raised when an invalid hexadecimal color is provided.
+    """
+    def __init__(self, invalid_colors: list[str]):
+        self.invalid_colors = invalid_colors
+        self.message = f"Invalid hexadecimal color(s) detected: {', '.join(invalid_colors)}"
         super().__init__(self.message)
