@@ -34,40 +34,57 @@ def print_final_result(passed_tests: int, total_tests: int) -> None:
     result_message = f"Tests passed ({passed_tests}/{total_tests}).\n"
     print(f"{Fore.LIGHTGREEN_EX if passed_tests == total_tests else Fore.LIGHTRED_EX}{result_message}")
 
+def run_tests(
+    analyzer: AnalyzeInteractions, 
+    method_name: str, 
+    test_cases: list[dict], 
+    expected_output: list[bool], 
+    exceptions: tuple, 
+    validate_result
+) -> None:
+    """
+    Execute test cases and validate the results.
+
+    Args:
+        analyzer (AnalyzeInteractions): An instance of the AnalyzeInteractions class.
+        method_name (str): The name of the method being tested.
+        test_cases (list[dict]): List of dictionaries containing test parameters.
+        expected_output (list[bool]): Expected results for each test case.
+        exceptions (tuple): Exception types expected during tests.
+        validate_result (callable): Function to validate the result for each test case.
+    """
+    print(f"Testing {method_name}:")
+    passed_tests = 0
+
+    for i, (case, expected) in enumerate(zip(test_cases, expected_output), start=1):
+        message = "."
+        try:
+            # Dynamically call the method using its name
+            getattr(analyzer, method_name)(**case)
+            result = validate_result(analyzer, case)  # Call custom validation logic
+        except exceptions as e:
+            result = False
+            message = f": {e.args[0]}"
+
+        passed_tests += check_test_result(result=result, expected=expected, test_case_index=i, message=message)
+
+    print_final_result(passed_tests=passed_tests, total_tests=len(test_cases))
+
+def validate_change_directory_result(analyzer: AnalyzeInteractions, case: dict) -> bool:
+    """Validation logic for change_directory."""
+    return os.path.isdir(case.get("path", ""))
+
 def test_change_directory(analyzer: AnalyzeInteractions) -> None:
     """
     Test the change_directory method of the AnalyzeInteractions class.
     
     Args:
         analyzer (AnalyzeInteractions): An instance of the AnalyzeInteractions class.
+
+    Returns:
+        None
     """
-    def run_tests(test_cases, expected_output, exceptions, test_name) -> None:
-        """
-        Execute test cases and validate results.
 
-        Args:
-            test_cases (list): List of dictionaries containing test parameters.
-            expected_output (list): Expected results for each test case.
-            exceptions (tuple): Exception types expected during tests.
-            test_name (str): Name of the test being executed.
-        """
-        print(f"Testing {test_name}:")
-        passed_tests = 0
-
-        for i, (case, expected) in enumerate(zip(test_cases, expected_output), start=1):
-            message = "."
-            try:
-                analyzer.change_directory(**case)
-                result = True
-            except exceptions as e:
-                result = False
-                message = ": " + e.args[0] + "."
-
-            passed_tests += check_test_result(result=result, expected=expected, test_case_index=i, message=message)
-        
-        print_final_result(passed_tests=passed_tests, total_tests=len(test_cases))
-
-    # Test cases for change_directory
     cases = [
         {"path": "outputs"},
         {"path": "wrong_dir"},
@@ -76,7 +93,26 @@ def test_change_directory(analyzer: AnalyzeInteractions) -> None:
     expected = [True, False, False]
     exceptions = (ValueError, TypeMismatchException)
 
-    run_tests(cases, expected, exceptions, "change_directory")
+    run_tests(
+        analyzer=analyzer,
+        method_name="change_directory",
+        test_cases=cases,
+        expected_output=expected,
+        exceptions=exceptions,
+        validate_result=validate_change_directory_result
+    )
+
+def validate_set_plot_config_result(analyzer: AnalyzeInteractions, case: dict) -> bool:
+    """Validation logic for set_plot_config."""
+    if 'reset' in case:
+        return (case['reset'] and analyzer.interaction_labels == INTERACTION_LABELS and analyzer.colors == COLORS) or not case['reset']
+    if 'colors' in case and 'interactions' in case:
+        return case['colors'] == analyzer.colors and case['interactions'] == analyzer.interaction_labels
+    if 'colors' in case:
+        return case['colors'] == analyzer.colors
+    if 'interactions' in case:
+        return case['interactions'] == analyzer.interaction_labels
+    return False
 
 def test_set_plot_config(analyzer: AnalyzeInteractions) -> None:
     """
@@ -84,54 +120,17 @@ def test_set_plot_config(analyzer: AnalyzeInteractions) -> None:
     
     Args:
         analyzer (AnalyzeInteractions): An instance of the AnalyzeInteractions class.
+
+    Returns:
+        None
     """
-    def run_tests(test_cases, expected_output, exceptions, test_name) -> None:
-        """
-        Execute test cases for set_plot_config and validate results.
 
-        Args:
-            test_cases (list): List of dictionaries containing test parameters.
-            expected_output (list): Expected results for each test case.
-            exceptions (tuple): Exception types expected during tests.
-            test_name (str): Name of the test being executed.
-        """
-        print(f"Testing {test_name}:")
-        passed_tests = 0
-
-        for i, (case, expected) in enumerate(zip(test_cases, expected_output), start=1):
-            message = "."
-            try:
-                analyzer.set_plot_config(**case)
-
-                # Initialize result as False
-                result = False  
-
-                # Check conditions to set result to True
-                if 'reset' in case:
-                    result = (case['reset'] and analyzer.interaction_labels == INTERACTION_LABELS and analyzer.colors == COLORS) or not case['reset']
-                elif 'colors' in case and 'interactions' in case:
-                    result = (case['colors'] == analyzer.colors and case['interactions'] == analyzer.interaction_labels)
-                elif 'colors' in case:
-                    result = case['colors'] == analyzer.colors
-                elif 'interactions' in case:
-                    result = case['interactions'] == analyzer.interaction_labels
-
-            except exceptions as e:
-                result = False
-                message = f": {e.args[0]}"
-
-            passed_tests += check_test_result(result=result, expected=expected, test_case_index=i, message=message)
-        
-        print_final_result(passed_tests=passed_tests, total_tests=len(test_cases))
-
-    # Test data
     interactions = ["Hydrophobic", "Aromatic_Face/Face"]
     colors_valids = ["#ff6384", "#36a2eb"]
     colors_no_valids = ["ff6384", "#36x2eb"]
     interactions_bigger = ["Hydrophobic", "Aromatic_Face/Face", "Other"]
     colors_bigger = ["#ff6384", "#36a2eb", "#36a45b"]
 
-    # Test cases for set_plot_config
     cases = [
         {"interactions": interactions, "colors": colors_valids, "reset": False},  # Valid configuration
         {"interactions": 123, "colors": colors_valids, "reset": False},  # Invalid types
@@ -158,16 +157,20 @@ def test_set_plot_config(analyzer: AnalyzeInteractions) -> None:
     ]
 
     exceptions = (ValueError, TypeMismatchException, InvalidColorException)
-    
-    # Execute the tests
-    run_tests(cases, expected, exceptions, "set_plot_config")
 
-# Initialize colorama for colored output
+    run_tests(
+        analyzer=analyzer,
+        method_name="set_plot_config",
+        test_cases=cases,
+        expected_output=expected,
+        exceptions=exceptions,
+        validate_result=validate_set_plot_config_result
+    )
+
+# Initialize colorama
 init(autoreset=True)
-
-# Create an instance of AnalyzeInteractions
 analyzer = AnalyzeInteractions()
 
-# Execute all test functions
-test_change_directory(analyzer=analyzer)
-test_set_plot_config(analyzer=analyzer)
+# Run the tests
+test_change_directory(analyzer)
+test_set_plot_config(analyzer)
