@@ -226,8 +226,7 @@ class AnalyzeInteractions:
     # Public Methods: Functionality #
     #################################
 
-    def analyze_files(
-        self, 
+    def analyze_files(self, 
         directory: str, 
         activity_file: str = None, 
         protein: bool = True, 
@@ -544,8 +543,7 @@ class AnalyzeInteractions:
 
         return matrix
     
-    def filter_by_interaction(
-            self, 
+    def filter_by_interaction(self, 
             matrix: list[list[str]], 
             interactions: list[int], 
             save: str = None
@@ -640,8 +638,7 @@ class AnalyzeInteractions:
 
         return filtered
 
-    def filter_by_subunit(
-            self,
+    def filter_by_subunit(self,
             matrix: list[list[str]], 
             subunits: list[str], 
             save: str = None
@@ -759,8 +756,7 @@ class AnalyzeInteractions:
 
         return filtered
 
-    def plot_matrix(
-        self,
+    def plot_matrix(self,
         matrix: list[list[str]],
         plot_name: str,
         axis: str,
@@ -931,11 +927,36 @@ class AnalyzeInteractions:
             plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
             plt.close(fig)  # Close the figure after saving to avoid display overlap
 
-    def remove_void(
+    def remove_empty_axis(
             self, 
-            matrix: list[list[str]]
+            matrix: list[list[str]],
+            save: str = None
             ) -> list[list[SyntaxError]]:
-        def _remove_void_rows(matrix: list[list[str]]) -> list[list[str]]:
+        """
+        Remove empty rows and columns from a given matrix.
+
+        Args:
+            matrix (list[list[str]]): The input matrix from which empty rows and columns will be removed.
+            save (str, optional): The filename to save the cleaned matrix. If None, the matrix will not be saved.
+
+        Returns:
+            list[list[str]]: The cleaned matrix with empty rows and columns removed.
+
+        Raises:
+            TypeMismatchException: If the types of input variables do not match the expected types.
+            ValueError: If the dimensions of the matrix are not valid or if the matrix is too small or any row is too short.
+        """
+        
+        def _remove_empty_rows(matrix: list[list[str]]) -> list[list[str]]:
+            """
+            Helper function to remove empty rows from the matrix.
+
+            Args:
+                matrix (list[list[str]]): The matrix from which empty rows will be removed.
+
+            Returns:
+                list[list[str]]: The matrix with empty rows removed.
+            """
             changes = 0
             for row in range(1, len(matrix)):
                 if all(not is_not_empty_or_dash(cell=column) for column in matrix[row - changes][1:]):
@@ -943,19 +964,33 @@ class AnalyzeInteractions:
                     changes += 1
             return matrix
 
-        # Remove empty rows
-        matrix = _remove_void_rows(matrix=matrix)
+        self._check_variable_types(
+            variables=[matrix, save], 
+            expected_types=[list, (str, None.__class__)], 
+            variable_names=['matrix', 'save']
+        )
+
+        self._verify_dimensions(matrix=matrix)
+
+        matrix = _remove_empty_rows(matrix=matrix)
         
         # Transpose the matrix, remove empty columns (which are now rows)
         matrix = self.transpose_matrix(matrix=matrix)
-        matrix = _remove_void_rows(matrix=matrix)
+        matrix = _remove_empty_rows(matrix=matrix)
         
         # Transpose back to restore original format
         matrix = self.transpose_matrix(matrix=matrix)
+
+        if save:
+            self.save_matrix(matrix=matrix, filename=save)
         
         return matrix
 
-    def save_matrix(self, matrix: list[list[str]], filename: str) -> None:
+    def save_matrix(
+            self, 
+            matrix: list[list[str]], 
+            filename: str
+            ) -> None:
         """
         Saves the matrix to a CSV file in the specified directory.
 
@@ -963,7 +998,7 @@ class AnalyzeInteractions:
             matrix (list[list[str]]): The matrix to be saved.
             filename (str): The name of the file to save the matrix in.
 
-        Return:
+        Returns:
             None
 
         Raises:
@@ -993,8 +1028,7 @@ class AnalyzeInteractions:
             for row in matrix:
                 csv_writer.writerow(row)
 
-    def sort_matrix(
-        self,
+    def sort_matrix(self,
         matrix: list[list[str]],
         axis: str = 'rows',
         thr_interactions: int = None,
