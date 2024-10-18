@@ -963,19 +963,32 @@ class AnalyzeInteractions:
             matrix (list[list[str]]): The matrix to be saved.
             filename (str): The name of the file to save the matrix in.
 
-        Returns:
+        Return:
             None
-        
+
         Raises:
-            ValueError: If the dimensions of the matrix are not valid.
+            ValueError: If the dimensions of the matrix are not valid or if the lengths of input lists don't match.
+            InvalidFileExtensionException: If the filename does not end with '.csv'.
+            TypeMismatchException: If a variable type doesn't match the expected one.
         """
-        # Ensure the matrix dimensions are valid
+
+        self._check_variable_types(
+            variables=[matrix, filename], 
+            expected_types=[list, str], 
+            variable_names=['matrix', 'filename']
+        )
+
+        # Verify that the filename ends with .csv
+        if not filename.endswith('.csv'):
+            raise InvalidFileExtensionException(filename)
+
         self._verify_dimensions(matrix=matrix)
 
         # Create the CSV file
-        with open(os.path.join(self.saving_directory, filename), 'w', newline='') as csv_file:
+        file_path = os.path.join(self.saving_directory, filename)
+        with open(file_path, 'w', newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
-            
+
             # Write the rows of the matrix to the CSV file
             for row in matrix:
                 csv_writer.writerow(row)
@@ -1139,7 +1152,11 @@ class AnalyzeInteractions:
 
         return selection
     
-    def transpose_matrix(self, matrix: list[list[str]], save: str = None) -> list[list[str]]:
+    def transpose_matrix(
+            self, 
+            matrix: list[list[str]], 
+            save: str = None
+            ) -> list[list[str]]:
         """
         Transposes the given matrix.
 
@@ -1200,4 +1217,11 @@ class InvalidColorException(Exception):
     def __init__(self, invalid_colors: list[str]):
         self.invalid_colors = invalid_colors
         self.message = f"Invalid hexadecimal color(s) detected: {', '.join(invalid_colors)}"
+        super().__init__(self.message)
+
+class InvalidFileExtensionException(Exception):
+    """Exception raised when the file extension is not .csv."""
+    def __init__(self, filename, message="Invalid file extension. Only '.csv' files are allowed"):
+        self.filename = filename
+        self.message = f"{message}: '{filename}'"
         super().__init__(self.message)
