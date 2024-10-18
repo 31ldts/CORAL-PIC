@@ -275,15 +275,15 @@ def test_transpose_matrix(analyzer: AnalyzeInteractions) -> None:
         {"matrix": matrix, "save": False},  # Invalid types
         {"matrix": False, "save": 'test.csv'},
         {"matrix": matrix}, # Partial updates
-        {"save": os.path.join(test_support_directory, 'test')},
-        {},  # Empty input
+        {"save": 'test.csv'},
+        {}  # Empty input
     ]
 
     expected = [
         True,  # Valid configuration
         False, False, # Invalid types or invalid colors
         True, False, # Partial updates
-        False,  # Empty input (no valid config)
+        False  # Empty input (no valid config)
     ]
 
     exceptions = (ValueError, TypeMismatchException, TypeError)
@@ -298,6 +298,55 @@ def test_transpose_matrix(analyzer: AnalyzeInteractions) -> None:
     )
 
 
+def validate_save_matrix_result(analyzer: AnalyzeInteractions, case: dict) -> bool:
+    """Validation logic for transpose_matrix."""
+
+    return load_and_compare_csv(directory=analyzer.saving_directory,
+                                filename=case['filename'],
+                                result=case['matrix'])
+
+def test_save_matrix(analyzer: AnalyzeInteractions) -> None:
+    """
+    Test the save_matrix method of the AnalyzeInteractions class.
+    
+    Args:
+        analyzer (AnalyzeInteractions): An instance of the AnalyzeInteractions class.
+
+    Returns:
+        None
+    """
+
+    matrix = [['abc', 'def', 'hij'], ['klm', 'nop', 'qrs']]
+    cases = [
+        {"matrix": matrix, "filename": 'test.csv'},  # Valid configuration
+        {"matrix": matrix, "filename": False},  # Invalid types
+        {"matrix": False, "filename": 'test.csv'},
+        {"matrix": matrix}, # Partial updates
+        {"filename": 'test.csv'},
+        {},  # Empty input
+        {"matrix": matrix, "filename": 'test.txt'}   # Invalid file extension
+    ]
+
+    expected = [
+        True,  # Valid configuration
+        False, False, # Invalid types or invalid colors
+        False, False, # Partial updates
+        False,  # Empty input (no valid config)
+        False   # Invalid file extension
+    ]
+
+    exceptions = (ValueError, TypeMismatchException, TypeError, InvalidFileExtensionException)
+
+    run_tests(
+        analyzer=analyzer,
+        method_name="save_matrix",
+        test_cases=cases,
+        expected_output=expected,
+        exceptions=exceptions,
+        validate_result=validate_save_matrix_result
+    )
+
+
 # Initialize colorama
 init(autoreset=True)
 create_directory(test_support_directory)
@@ -307,3 +356,4 @@ analyzer = AnalyzeInteractions()
 test_change_directory(analyzer)
 test_set_plot_config(analyzer)
 test_transpose_matrix(analyzer)
+test_save_matrix(analyzer)
