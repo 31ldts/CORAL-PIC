@@ -1154,25 +1154,22 @@ class AnalyzeInteractions:
             TypeMismatchException: If the types of the provided arguments are incorrect.
             ValueError: If the dimensions of the matrix are not valid.
         """
-        # Check types of matrix and save parameters
+        
         self._check_variable_types(
             variables=[matrix, save], 
             expected_types=[list, (str, None.__class__)], 
             variable_names=['matrix', 'save']
         )
 
-        # Ensure matrix has consistent dimensions
         self._verify_dimensions(matrix=matrix)
 
         # Transpose the matrix using list comprehension
         transposed = [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
-        # Save the transposed matrix if a file path is provided
         if save:
             self.save_matrix(matrix=transposed, filename=save)
 
         return transposed
-
 
 ##############
 # Exceptions #

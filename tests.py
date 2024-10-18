@@ -1,8 +1,68 @@
 from analyze_interactions import *
 from colorama import Fore, init
+import os
+import sys
 
 # Directory for test support files
 test_support_directory = "tests_support_files"
+
+def load_and_compare_csv(directory: str, filename: str, result: list[list[str]]) -> bool:
+    """
+    Load a CSV file from the specified directory into a matrix and compare it with the provided result matrix.
+
+    Args:
+        directory (str): Path to the directory containing the CSV file.
+        filename (str): Name of the CSV file to load.
+        result (List[List[str]]): The matrix to compare with the loaded content.
+
+    Returns:
+        bool: True if the loaded matrix matches the result, False otherwise.
+
+    Raises:
+        FileOrDirectoryNotFoundException: If the directory or file does not exist.
+        TypeMismatchException: If the result is not of type List[List[str]].
+    """
+    # Validate 'result' type
+    if not isinstance(result, list) or not all(isinstance(row, list) for row in result):
+        raise TypeMismatchException(
+            variable_name='result',
+            expected_types=[list],
+            actual_type=type(result)
+        )
+
+    # Construct the full path to the file
+    file_path = os.path.join(directory, filename)
+
+    # Check if the file exists
+    if not os.path.isfile(file_path):
+        raise FileOrDirectoryNotFoundException(file_path)
+
+    # Load the CSV content into a matrix
+    csv_matrix: list[list[str]] = []
+    with open(file_path, 'r', newline='') as file:
+        reader = csv.reader(file)
+        csv_matrix = [row for row in reader]
+
+    # Compare the loaded matrix with the provided result matrix
+    return csv_matrix == result
+
+def create_directory(directory_name: str) -> None:
+    """
+    Create a directory if it doesn't exist. Stops the program if creation fails.
+
+    Args:
+        directory_name (str): Name of the directory to create.
+
+    Raises:
+        SystemExit: If the directory cannot be created due to an error.
+    """
+    try:
+        # Create the directory if it does not exist
+        os.makedirs(directory_name, exist_ok=True)
+        print(f"Directory '{directory_name}' created or already exists.")
+    except OSError as e:
+        print(f"Critical Error: Could not create directory '{directory_name}'. {e}")
+        sys.exit(1)  # Stop the program immediately with a non-zero exit code
 
 def check_test_result(result: bool, expected: bool, test_case_index: int, message: str) -> int:
     """
@@ -59,15 +119,28 @@ def run_tests(
     for i, (case, expected) in enumerate(zip(test_cases, expected_output), start=1):
         message = "."
         try:
-            # Dynamically call the method using its name
-            getattr(analyzer, method_name)(**case)
-            result = validate_result(analyzer, case)  # Call custom validation logic
+            # Call the method dynamically and store the result if any
+            case['result'] = getattr(analyzer, method_name)(**case)
+
+            # Validate the result using custom logic
+            result = validate_result(analyzer, case)
+            if result and 'save' in case:
+                if isinstance(case['save'], str):
+                    exceptions = exceptions + (FileOrDirectoryNotFoundException,)
+                    result = load_and_compare_csv(directory=analyzer.saving_directory,
+                                                  filename=case['save'],
+                                                  result=case['result']);
+                
         except exceptions as e:
             result = False
             message = f": {e.args[0]}"
 
-        passed_tests += check_test_result(result=result, expected=expected, test_case_index=i, message=message)
+        # Check if the test passed and accumulate the count of passed tests
+        passed_tests += check_test_result(
+            result=result, expected=expected, test_case_index=i, message=message
+        )
 
+    # Print the final summary of tests
     print_final_result(passed_tests=passed_tests, total_tests=len(test_cases))
 
 def validate_change_directory_result(analyzer: AnalyzeInteractions, case: dict) -> bool:
@@ -86,7 +159,7 @@ def test_change_directory(analyzer: AnalyzeInteractions) -> None:
     """
 
     cases = [
-        {"path": "outputs"},
+        {"path": test_support_directory},
         {"path": "wrong_dir"},
         {"path": 1}
     ]
@@ -167,10 +240,70 @@ def test_set_plot_config(analyzer: AnalyzeInteractions) -> None:
         validate_result=validate_set_plot_config_result
     )
 
+def validate_transpose_matrix_result(analyzer: AnalyzeInteractions, case: dict) -> bool:
+    """Validation logic for transpose_matrix."""
+
+    matrix = case['matrix']
+    transpose = case['result']
+
+    # Check if dimensions are compatible
+    if len(matrix) != len(transpose[0]) or len(matrix[0]) != len(transpose):
+        return False
+
+    # Check if elements match for the transpose condition
+    for i in range(len(matrix)):
+        for j in range(len(matrix[0])):
+            if matrix[i][j] != transpose[j][i]:
+                return False
+
+    return True
+
+def test_transpose_matrix(analyzer: AnalyzeInteractions) -> None:
+    """
+    Test the transpose_matrix method of the AnalyzeInteractions class.
+    
+    Args:
+        analyzer (AnalyzeInteractions): An instance of the AnalyzeInteractions class.
+
+    Returns:
+        None
+    """
+
+    matrix = [['abc', 'def', 'hij'], ['klm', 'nop', 'qrs']]
+    cases = [
+        {"matrix": matrix, "save": 'test.csv'},  # Valid configuration
+        {"matrix": matrix, "save": False},  # Invalid types
+        {"matrix": False, "save": 'test.csv'},
+        {"matrix": matrix}, # Partial updates
+        {"save": os.path.join(test_support_directory, 'test')},
+        {},  # Empty input
+    ]
+
+    expected = [
+        True,  # Valid configuration
+        False, False, # Invalid types or invalid colors
+        True, False, # Partial updates
+        False,  # Empty input (no valid config)
+    ]
+
+    exceptions = (ValueError, TypeMismatchException, TypeError)
+
+    run_tests(
+        analyzer=analyzer,
+        method_name="transpose_matrix",
+        test_cases=cases,
+        expected_output=expected,
+        exceptions=exceptions,
+        validate_result=validate_transpose_matrix_result
+    )
+
+
 # Initialize colorama
 init(autoreset=True)
+create_directory(test_support_directory)
 analyzer = AnalyzeInteractions()
 
 # Run the tests
 test_change_directory(analyzer)
 test_set_plot_config(analyzer)
+test_transpose_matrix(analyzer)
