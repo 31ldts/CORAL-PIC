@@ -4,6 +4,7 @@ tests/
 tests_support_files/
 arpeggio-ifp/
 ichem-ifp/
+ichem-ifp-activities.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
