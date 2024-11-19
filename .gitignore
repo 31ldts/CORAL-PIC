@@ -2,6 +2,8 @@
 outputs/
 tests/
 tests_support_files/
+arpeggio-ifp/
+ichem-ifp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
