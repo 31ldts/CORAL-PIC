@@ -1038,6 +1038,7 @@ class AnalyzeInteractions:
         residue_chain: bool = False,
         save: str = None
     ) -> list[list[str]]:
+
         """
         Sorts and selects reactive rows or columns from a matrix based on interactions.
 
@@ -1076,7 +1077,6 @@ class AnalyzeInteractions:
                 interactions += len(sections[index].split(SAME_DELIM))
             return interactions
 
-        # Inner function to sort by residue
         def sort_by_residue(
                 matrix: list[list[str]]
                 ) -> list[list[str]]:
@@ -1115,16 +1115,17 @@ class AnalyzeInteractions:
 
             return sorted_matrix
 
-        # Check variable types to ensure correct input
         self._check_variable_types(
             variables=[matrix, axis, thr_interactions, thr_activity, selected_items, count, residue_chain, save], 
             expected_types=[list, str, (int, None.__class__), (float, None.__class__), (int, None.__class__), bool, bool, (str, None.__class__)], 
             variable_names=['matrix', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'residue_chain', 'save']
         )
 
-        # Validate matrix dimensions
         self._verify_dimensions(matrix=matrix)
 
+        if axis not in ['rows', 'columns']:
+            raise InvalidAxisException(axis)
+    
         # Raise an error if `thr_interactions` and `selected_items` are provided simultaneously
         if thr_interactions is not None and selected_items is not None:
             raise ValueError("Cannot select by both 'thr_interactions' and 'selected_items' at the same time.")
@@ -1180,7 +1181,6 @@ class AnalyzeInteractions:
         if axis == 'columns':
             selection = self.transpose_matrix(matrix=selection)
 
-        # Save the matrix if a save path is provided
         if save:
             self.save_matrix(matrix=selection, filename=save)
 
@@ -1258,4 +1258,11 @@ class InvalidFileExtensionException(Exception):
     def __init__(self, filename, message="Invalid file extension. Only '.csv' files are allowed"):
         self.filename = filename
         self.message = f"{message}: '{filename}'"
+        super().__init__(self.message)
+
+class InvalidAxisException(Exception):
+    """Exception raised for invalid axis values."""
+    def __init__(self, axis_value):
+        self.axis_value = axis_value
+        self.message = f"Invalid axis value: '{axis_value}'. Expected 'rows' or 'columns'."
         super().__init__(self.message)
