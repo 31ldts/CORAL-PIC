@@ -74,6 +74,8 @@ class AnalyzeInteractions:
         self.saving_directory = os.getcwd()  # Set the default saving directory
         self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
         self.colors = COLORS  # Default color configuration
+        self.codes = True
+        self.max_elements_per_plot = 80
 
     ###################
     # Private Methods #
@@ -332,6 +334,8 @@ class AnalyzeInteractions:
                 list[list[str]]: The labeled matrix.
             """
             rows = [row.replace("\t", "") for row in rows]
+            if self.codes and correction:
+                columns = [correction[cont] + ", " + column for cont, column in enumerate(columns)]
             columns = [""] + columns[:]  # Add an empty string at the start for residue names
             
             if activity_file:
@@ -1007,40 +1011,127 @@ class AnalyzeInteractions:
 
         else:
             # Create a new figure for the bar chart
-            fig, ax = plt.subplots(num=plot_name, figsize=(12, 6))
+            max_elements_per_plot = self.max_elements_per_plot
+            num_x_elements = len(indices)
 
-            if stacked:
-                bars = []
-                bottoms = [0] * len(indices)
-                for index, group in enumerate(transposed_data):
-                    bars.append(ax.bar(indices, group, bottom=bottoms, label=self.interaction_labels[index], color=colors[index]))
-                    bottoms = [i + j for i, j in zip(bottoms, group)]
+            # Divide data into multiple plots if necessary
+            if num_x_elements > max_elements_per_plot:
+                # Calculate the number of plots needed
+                num_plots = (num_x_elements + max_elements_per_plot - 1) // max_elements_per_plot  # Ceiling division
 
-                ax.set_xticks(range(len(indices)))
-                if self._get_residues_axis(matrix=matrix) == axis:
-                    ax.set_xticklabels(indices)
-                else:
-                    ax.set_xticklabels(item.split()[0] for item in indices)
-                # Adding legend for all labels used in the bar chart
-                ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+                # Calculate the number of elements per plot, ensuring equal distribution
+                elements_per_plot = num_x_elements // num_plots
+                remainder = num_x_elements % num_plots
 
-                max_y = max([sum(col) for col in data])
+                # Split indices into equally distributed groups
+                split_indices = []
+                start = 0
+                for i in range(num_plots):
+                    # Distribute the remainder among the first few plots
+                    end = start + elements_per_plot + (1 if i < remainder else 0)
+                    split_indices.append((start, end))
+                    start = end
+
+                # Ensure all plots have the same Y-axis limit
+                max_y_values = []
+                split_data = []
+
+                for start, end in split_indices:
+                    if stacked:
+                        # Safely slice transposed_data based on start and end
+                        split_group = [group[start:end] for group in transposed_data]
+                        split_data.append(split_group)
+                        max_y_values.append(max(sum(col) for col in zip(*split_group)))
+                    else:
+                        # Safely slice data based on start and end
+                        split_data.append((data[0][start:end], data[1][start:end]))
+                        max_y_values.append(max(split_data[-1][1]))
+
+                global_max_y = max(max_y_values)
+
+                # Generate separate plots for each split group
+                for i, (start, end) in enumerate(split_indices):
+                    fig, ax = plt.subplots(num=f"{plot_name}_{i+1}", figsize=(12, 6))
+                    subset_indices = indices[start:end]  # Subset of indices for the current plot
+
+                    if stacked:
+                        bars = []
+                        bottoms = [0] * (end - start)
+                        for index, group in enumerate(transposed_data):
+                            group_subset = group[start:end]  # Subset of the group for the current plot
+                            bar = ax.bar(subset_indices, group_subset, bottom=bottoms, label=self.interaction_labels[index], color=colors[index])
+                            bars.append(bar)
+                            bottoms = [b + g for b, g in zip(bottoms, group_subset)]
+
+                        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+
+                        # Add interactive cursors to display percentages for stacked bars
+                        cursor = mplcursors.cursor(bars, hover=True)
+
+                        @cursor.connect("add")
+                        def on_add(sel):
+                            # Get the index of the bar in the current figure
+                            bar_index = sel.index
+                            # Translate the index to the original dataset's range
+                            original_index = start + bar_index
+                            # Calculate totals and percentages
+                            total = sum(transposed_data[j][original_index] for j in range(len(transposed_data)))
+                            percentages = [
+                                transposed_data[j][original_index] / total * 100 if total != 0 else 0
+                                for j in range(len(transposed_data))
+                            ]
+                            # Create annotation text
+                            annotation_text = "\n".join(
+                                [f"{self.interaction_labels[j]}: {percentages[j]:.1f}%" for j in range(len(self.interaction_labels))]
+                            )
+                            sel.annotation.set_text(annotation_text)
+                            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
+                    else:
+                        x_data = data[0][start:end]
+                        y_data = data[1][start:end]
+                        ax.bar(x_data, y_data, color=colors[0] if len(colors) > 0 else None)
+
+                    ax.set_ylim(0, global_max_y * 1.1)  # Same Y-axis limit for consistency
+                    ax.set_xticks(range(len(subset_indices)))
+                    ax.set_xticklabels(subset_indices, rotation=90, ha='center')
+                    ax.set_ylabel(label_y)
+                    ax.set_xlabel(label_x or "Interacting protein residues")
+                    ax.set_title(f"{title} (Part {i+1})")
+                    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+                    plt.tight_layout()
+
+                    if save:
+                        plt.savefig(os.path.join(self.saving_directory, f"{plot_name}_part_{i+1}.png"))
+                        plt.close(fig)
+                    else:
+                        plt.show()
+
+
             else:
-                data = self.sort_matrix(matrix, axis, count=True)
-                ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
+                # Original plotting logic if data fits in one plot
+                fig, ax = plt.subplots(num=plot_name, figsize=(12, 6))
+                if stacked:
+                    bars = []
+                    bottoms = [0] * len(indices)
+                    for index, group in enumerate(transposed_data):
+                        bars.append(ax.bar(indices, group, bottom=bottoms, label=self.interaction_labels[index], color=colors[index]))
+                        bottoms = [i + j for i, j in zip(bottoms, group)]
 
-                max_y = max(data[1])
+                    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+                    max_y = max([sum(col) for col in data])
+                else:
+                    data = self.sort_matrix(matrix, axis, count=True)
+                    ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
+                    max_y = max(data[1])
 
-            ax.set_ylim(0, max_y * 1.1)
-            ax.set_ylabel(label_y)
-            if label_x is None:
-                residues_axis = self._get_residues_axis(matrix=matrix)
-                label_x = "Interacting protein residues" if residues_axis == axis else "PDB complexes"
-            ax.set_xlabel(label_x)
-            ax.set_title(title)
-            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-            plt.xticks(rotation=90, ha='center')
-            plt.tight_layout()
+                ax.set_ylim(0, max_y * 1.1)
+                ax.set_xticks(range(len(indices)))
+                ax.set_xticklabels(indices, rotation=90, ha='center')
+                ax.set_ylabel(label_y)
+                ax.set_xlabel(label_x or "Interacting protein residues")
+                ax.set_title(title)
+                ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+                plt.tight_layout()
 
             # Add interactive cursors to display percentages for stacked bars
             if stacked:
