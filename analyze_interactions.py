@@ -5,6 +5,7 @@ from matplotlib.ticker import MaxNLocator
 import mplcursors
 import copy
 import re
+import json
 
 ###########
 # Globals #
@@ -21,6 +22,32 @@ COLORS = [
     "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
     "#9467bd", "#8c564b"
 ]
+
+# List of predictors
+PREDICTORS = [
+    "ichem", "arpeggio"
+]
+
+# Arpeggio interaction entities
+ARPEGGIO_INT_ENT = [
+    "INTER"
+]
+
+ARPEGGIO_CONT = [
+    "covalent", "hbond", "aromatic", "hydrophobic", "polar", "ionic", "xbond", "metal", 
+    "carbonyl", "CARBONPI", "CATIONPI", "DONORPI", "HALOGENPI", "METSULPHURPI", 
+    "AMIDEAMIDE", "AMIDERING"
+]
+
+ARPEGGIO_TYPE = [
+    "plane-plane"
+]
+
+ARPEGGIO_COLORS = [
+    "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+    "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#ff9da7", "#1a9ceb", "#fdca52"
+]
+
 
 # Constants for delimiters
 SAME_DELIM = ', '       # Delimiter used to separate interactions of the same type.
@@ -161,7 +188,8 @@ class AnalyzeInteractions:
             self, 
             interactions: list[str] = None, 
             colors: list[str] = None, 
-            reset: bool = False
+            reset: bool = False,
+            mode: str = None
             ) -> None:
         """
         Updates interaction labels and colors or resets them to default values.
@@ -201,9 +229,9 @@ class AnalyzeInteractions:
             self.colors = COLORS
 
         self._check_variable_types(
-            variables=[interactions, colors, reset],
-            expected_types=[(list, None.__class__), (list, None.__class__), bool],
-            variable_names=['interactions', 'colors', 'reset']
+            variables=[interactions, colors, reset, mode],
+            expected_types=[(list, None.__class__), (list, None.__class__), bool, (str, None.__class__)],
+            variable_names=['interactions', 'colors', 'reset', 'mode']
         )
 
         # Perform reset if requested
@@ -222,12 +250,23 @@ class AnalyzeInteractions:
                 raise InvalidColorException(invalid_colors)
             self.colors = colors
 
+        if mode:
+            if mode == 'ichem':
+                self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
+                self.colors = COLORS  # Default color configuration
+            elif mode == 'arpeggio':
+                self.interaction_labels = ARPEGGIO_CONT + ARPEGGIO_TYPE  # Default interaction labels
+                self.colors = ARPEGGIO_COLORS  # Default color c
+            else:
+                raise InvalidPredictorException(predictor=mode)
+
     #################################
     # Public Methods: Functionality #
     #################################
 
     def analyze_files(self, 
         directory: str, 
+        predictor: str, 
         activity_file: str = None, 
         protein: bool = True, 
         ligand: bool = True, 
@@ -240,6 +279,7 @@ class AnalyzeInteractions:
 
         Args:
             directory (str): Path to the directory containing interaction data files.
+            predictor (str): Label to differentiate predictors' files.
             activity_file (str, optional): Path to the activity file (CSV) for labeling data.
             protein (bool, optional): Include protein atoms in the analysis if True.
             ligand (bool, optional): Include ligand atoms in the analysis if True.
@@ -258,7 +298,8 @@ class AnalyzeInteractions:
             matrix: list[list[str]], 
             rows: list[str], 
             columns: list[str], 
-            activity_file: str
+            activity_file: str,
+            correction: list[str] = None
         ) -> list[list[str]]:
             """
             Adds headers to the interaction matrix with residue names and file names.
@@ -294,9 +335,14 @@ class AnalyzeInteractions:
                     raise ValueError(f"The CSV file '{activity_file}' must contain at least one row of data.")
 
                 # Update column names with activity data
-                for i in range(1, len(columns)):
-                    drug_name = columns[i]
-                    columns[i] = f"{drug_name} ({data_dict.get(drug_name, '0')})"
+                if correction:
+                    for i in range(1, len(columns)):
+                        drug_name = columns[i]
+                        columns[i] = f"{drug_name} ({data_dict.get(correction[i-1], '0')})"
+                else:
+                    for i in range(1, len(columns)):
+                        drug_name = columns[i]
+                        columns[i] = f"{drug_name} ({data_dict.get(drug_name, '0')})"
 
             # Insert headers into the matrix
             matrix.insert(0, columns)
@@ -306,10 +352,10 @@ class AnalyzeInteractions:
             return matrix
 
         def modify_cell(
-                self,
                 text: str, 
                 interaction: str, 
-                atoms: str
+                atoms: str,
+                interaction_labels: list,
                 ) -> str:
             """
             Updates the cell content by adding the interaction type and the involved atoms.
@@ -323,10 +369,10 @@ class AnalyzeInteractions:
                 str: The updated cell content.
             """
             # Create an interaction_map based on the global INTERACTION_LABELS list
-            interaction_map = {label: str(index + 1) for index, label in enumerate(self.interaction_labels)}
-            
+            interaction_map = {label: str(index + 1) for index, label in enumerate(interaction_labels)}
+
             # Assign the interaction code based on the interaction_map, or default to the last value
-            interaction_code = interaction_map.get(interaction, str(len(self.interaction_labels)))
+            interaction_code = interaction_map.get(interaction, str(len(interaction_labels)))
 
             # If the text is empty, add the interaction with the provided atoms
             if text == "":
@@ -353,14 +399,14 @@ class AnalyzeInteractions:
             
             return cell
 
-        def read_txt_file(
+        def read_file(
                 file_name: str
                 ) -> list[str]:
             """
-            Reads a text file and returns its content as a list of lines.
+            Reads a file and returns its content as a list of lines.
 
             Args:
-                file_name (str): The name of the text file to read.
+                file_name (str): The name of the file to read.
 
             Returns:
                 list[str]: List of lines from the file.
@@ -371,7 +417,10 @@ class AnalyzeInteractions:
             """
             try:
                 with open(file_name, 'r') as file:
-                    return [line.strip() for line in file.readlines()]
+                    if file_name.split('.')[-1] == "json":
+                        return json.load(file)
+                    else:
+                        return [line.strip() for line in file.readlines()]
             except FileNotFoundError:
                 print(f"Error: The file '{file_name}' does not exist.")
                 raise
@@ -479,63 +528,127 @@ class AnalyzeInteractions:
             # Match the input string with the regular expression pattern
             return bool(re.match(pattern, input_string))
 
+        def get_protein_ligand(begin: dict, end: dict) -> tuple[dict, dict]:
+            if begin["label_comp_type"] == "P":
+                return begin, end
+            else:
+                return end, begin
+
         # Validate input types
         self._check_variable_types(
-            variables=[directory, activity_file, protein, ligand, subunit, save],
-            expected_types=[str, (str, None.__class__), bool, bool, bool, (str, None.__class__)],
-            variable_names=['directory', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
+            variables=[directory, predictor, activity_file, protein, ligand, subunit, save],
+            expected_types=[str, str, (str, None.__class__), bool, bool, bool, (str, None.__class__)],
+            variable_names=['directory', 'predictor', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
         )
 
         # Check if the directory exists
         if not os.path.exists(directory):
             raise FileOrDirectoryNotFoundException(path=directory)
         
+        # Check if the predictor is registered
+        if predictor not in PREDICTORS:
+            raise InvalidPredictorException(predictor=predictor)
+        else:
+            self.set_plot_config(mode=predictor)
+
         files = os.listdir(directory)
         if not files:
             raise EmptyDirectoryException(path=directory)
 
+        ligands = [None] * len(files)
         matrix = []
         aa = {}
         cont = 0
         subunits_set = set()
         
-        # Analyze each file in the directory
-        for index, file in enumerate(files):
-            file_path = os.path.join(directory, file)
-            if os.path.isfile(file_path):
-                content = read_txt_file(file_path)
-                for line in content:
-                    elements = line.split(GROUP_DELIM)
-                    if len(elements) == 10:
-                        interaction = elements[0].strip().replace("\t", "")
-                        residue = elements[3].strip().replace("\t", "")
-                        if validate_string(residue):
-                            if not subunit:
-                                sections = residue.split("-")
-                                residue = sections[0]
-                                subunits_set.add(sections[1])
+        if predictor == 'ichem':
+            # Analyze each file in the directory
+            for index, file in enumerate(files):
+                file_path = os.path.join(directory, file)
+                if os.path.isfile(file_path):
+                    content = read_file(file_path)
+                    for line in content:
+                        elements = line.split(GROUP_DELIM)
+                        if len(elements) == 10:
+                            interaction = elements[0].strip().replace("\t", "")
+                            residue = elements[3].strip().replace("\t", "")
+                            if validate_string(residue):
+                                if not subunit:
+                                    sections = residue.split("-")
+                                    residue = sections[0]
+                                    subunits_set.add(sections[1])
 
-                            atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
-                            if not subunit:
-                                atoms += f"({sections[1]})"
+                                atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
+                                if not subunit:
+                                    atoms += f"({sections[1]})"
 
-                            if residue not in aa:
-                                aa[residue] = cont
-                                cont += 1
-                            column = aa[residue]
+                                if residue not in aa:
+                                    aa[residue] = cont
+                                    cont += 1
+                                column = aa[residue]
 
-                            # Ensure matrix size and modify cell
-                            if len(matrix) <= column:
-                                matrix.append([""] * len(files))
+                                # Ensure matrix size and modify cell
+                                if len(matrix) <= column:
+                                    matrix.append([""] * len(files))
 
-                            matrix[column][index] = modify_cell(self=self, text=matrix[column][index], interaction=interaction, atoms=atoms)
-                    
-            files[index] = file.replace(".txt", "")
+                                matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=INTERACTION_LABELS)
+                        
+                ligands[index] = file.replace(".txt", "")
+            files = None
+        elif predictor == 'arpeggio':
+            # Analyze each file in the directory
+            for index, file in enumerate(files):
+                file_path = os.path.join(directory, file)
+                if os.path.isfile(file_path):
+                    content = read_file(file_path)
+                    # Filter to obtain entries with interacting_entities == INTER
+                    inter_set = [elem for elem in content if elem["interacting_entities"] in ARPEGGIO_INT_ENT]
+                    # Filter to obtain entries with the desired contact or type
+                    inter_set = [
+                        elem for elem in inter_set
+                        for contact in elem["contact"]
+                        if contact in ARPEGGIO_CONT or elem["type"] in ARPEGGIO_TYPE
+                    ]
+                    for inter in inter_set:
+                        if inter["type"] in ARPEGGIO_TYPE:
+                            contact = inter["type"]
+                        else:
+                            contact = [cont for cont in inter["contact"] if cont in ARPEGGIO_CONT]
+                        protein, ligand = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
+                        residue = protein["label_comp_id"] + " " + str(protein["auth_seq_id"])
+                        prot_atom = protein["auth_atom_id"]
+                        prot_subunit = protein["auth_asym_id"]
+                        ligand_code = ligand["label_comp_id"]
+                        lig_atom = ligand["auth_atom_id"]
+                        
+                        subunits_set.add(prot_subunit)
+                        atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom
+
+                        if subunit:
+                            residue += "-" + prot_subunit
+                        else:
+                            atoms += f"({prot_subunit})"
+
+                        if residue not in aa:
+                            aa[residue] = cont
+                            cont += 1
+                        column = aa[residue]
+
+                        # Ensure matrix size and modify cell
+                        if len(matrix) <= column:
+                            matrix.append([""] * len(files))
+
+                        for interaction in contact:
+                            matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
+ 
+                # En este caso no vale, se debe detectar el combre del ligando    
+                files[index] = file.replace(".json", "")
+                ligands[index] = ligand_code
 
         if not subunit:
             matrix = adjust_subunits(matrix=matrix)
         matrix = sort_interactions(matrix=matrix)
-        matrix = label_matrix(matrix=matrix, rows=list(aa.keys()), columns=files, activity_file=activity_file)
+        matrix = label_matrix(matrix=matrix, rows=list(aa.keys()), columns=ligands, activity_file=activity_file, correction=files)
 
         # Save the matrix if specified
         if save:
@@ -574,7 +687,7 @@ class AnalyzeInteractions:
                 ValueError: If any number is outside the range of 1 to 7 or if there are duplicates.
             """
             # Valid interactions are numbers from 1 to 7
-            valid_numbers = set(range(1, 8))
+            valid_numbers = set(range(1, len(self.interaction_labels) + 1))
 
             # Check if all numbers in the list are within the valid range
             for num in interactions:
@@ -861,13 +974,17 @@ class AnalyzeInteractions:
             fig, ax_pie = plt.subplots(figsize=(10, 6))
 
             # Plotting the pie chart without labels around it
-            wedges, texts, autotexts = ax_pie.pie(sizes, labels=None, colors=pie_colors, autopct='%1.1f%%', startangle=140)
+            wedges, texts, autotexts = ax_pie.pie(sizes, labels=None, colors=pie_colors, autopct='', startangle=140)
 
             # Set the title of the pie chart
             ax_pie.set_title('Interaction Percentages')
 
+            total = 0
+            for interaction in sizes:
+                total += interaction
+
             # Adding a legend with all possible interaction labels, regardless of their values
-            labels = [label for label, count in zip(self.interaction_labels, total_interactions) if count != 0]
+            labels = [label + " (" + str(round(count/total*100, 2)) +"%)" for label, count in zip(self.interaction_labels, total_interactions) if count != 0]
             ax_pie.legend(labels, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
 
         else:
@@ -1265,4 +1382,14 @@ class InvalidAxisException(Exception):
     def __init__(self, axis_value):
         self.axis_value = axis_value
         self.message = f"Invalid axis value: '{axis_value}'. Expected 'rows' or 'columns'."
+        super().__init__(self.message)
+
+class InvalidPredictorException(Exception):
+    """Exception raised for invalid predictor values."""
+    def __init__(self, predictor):
+        self.predictor_value = predictor
+        expected_values = ""
+        for value in PREDICTORS:
+            expected_values += "\n\t- " + value
+        self.message = f"Invalid predictor value: '{predictor}'. Expected:{expected_values}"
         super().__init__(self.message)
