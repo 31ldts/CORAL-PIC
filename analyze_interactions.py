@@ -122,8 +122,26 @@ class AnalyzeInteractions:
         count_0_1 = matrix[0][1].count('(')
         count_1_0 = matrix[1][0].count('(')
 
-        if count_0_1 == count_1_0:
-            raise ValueError("Cannot determine the residues' axis.")
+        if count_0_1 == count_1_0: # This checks in case activity is used or not
+            count_0_1 = matrix[0][1].count(', ')
+            count_1_0 = matrix[1][0].count(', ')
+            if count_0_1 == count_1_0: # This checks in case PDB and ligand code are used or not
+                count_0_1 = matrix[0][1].count(' ')
+                count_1_0 = matrix[1][0].count(' ')
+                if count_0_1 == count_1_0:
+                    raise ValueError("Cannot determine the residues' axis.")
+                elif count_0_1 == 1:
+                    return 'columns'
+                elif count_1_0 == 1:
+                    return 'rows'
+                else:
+                    raise ValueError("Cannot determine the residues' axis.")
+            elif count_0_1 == 1:
+                return 'rows'
+            elif count_1_0 == 1:
+                return 'columns'
+            else:
+                raise ValueError("Cannot determine the residues' axis.")
         elif count_0_1 == 1:
             return 'rows'
         elif count_1_0 == 1:
@@ -614,12 +632,12 @@ class AnalyzeInteractions:
                             contact = inter["type"]
                         else:
                             contact = [cont for cont in inter["contact"] if cont in ARPEGGIO_CONT]
-                        protein, ligand = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
-                        residue = protein["label_comp_id"] + " " + str(protein["auth_seq_id"])
-                        prot_atom = protein["auth_atom_id"]
-                        prot_subunit = protein["auth_asym_id"]
-                        ligand_code = ligand["label_comp_id"]
-                        lig_atom = ligand["auth_atom_id"]
+                        prot, lig = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
+                        residue = prot["label_comp_id"] + " " + str(prot["auth_seq_id"])
+                        prot_atom = prot["auth_atom_id"]
+                        prot_subunit = prot["auth_asym_id"]
+                        ligand_code = lig["label_comp_id"]
+                        lig_atom = lig["auth_atom_id"]
                         
                         subunits_set.add(prot_subunit)
                         atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom
@@ -1041,7 +1059,7 @@ class AnalyzeInteractions:
         if not save:
             plt.show()
         else:
-            plt.savefig(os.path.join(saving_directory, plot_name + '.png'))
+            plt.savefig(os.path.join(self.saving_directory, plot_name + '.png'))
             plt.close(fig)  # Close the figure after saving to avoid display overlap
 
     def remove_empty_axis(
