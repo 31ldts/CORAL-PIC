@@ -58,6 +58,12 @@ GROUP_DELIM = '|'        # Delimiter used to group interactions of the same type
 EMPTY_CELL = ''         # Represents an empty cell value from the beginning.
 EMPTY_DASH_CELL = '-'   # Represents a cell that is considered empty due to filtering.
 
+# Lista global con los códigos de 3 letras de los aminoácidos
+AMINO_ACID_CODES = [
+    "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", 
+    "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL"
+]
+
 ###########
 # Lambdas #
 ###########
@@ -76,6 +82,7 @@ class AnalyzeInteractions:
         self.colors = COLORS  # Default color configuration
         self.codes = True
         self.max_elements_per_plot = 80
+        self.aa = AMINO_ACID_CODES
 
     ###################
     # Private Methods #
@@ -551,7 +558,14 @@ class AnalyzeInteractions:
             return bool(re.match(pattern, input_string))
 
         def get_protein_ligand(begin: dict, end: dict) -> tuple[dict, dict]:
-            if begin["label_comp_type"] == "P":
+            if begin["label_comp_type"] == "P" and end["label_comp_type"] == "P":
+                if begin["label_comp_id"] in self.aa and end["label_comp_id"] in self.aa:
+                    return None, None
+                elif begin["label_comp_id"] in self.aa:
+                    return begin, end
+                else:
+                    return end, begin
+            elif begin["label_comp_type"] == "P":
                 return begin, end
             else:
                 return end, begin
@@ -637,31 +651,34 @@ class AnalyzeInteractions:
                         else:
                             contact = [cont for cont in inter["contact"] if cont in ARPEGGIO_CONT]
                         prot, lig = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
-                        residue = prot["label_comp_id"] + " " + str(prot["auth_seq_id"])
-                        prot_atom = prot["auth_atom_id"]
-                        prot_subunit = prot["auth_asym_id"]
-                        ligand_code = lig["label_comp_id"]
-                        lig_atom = lig["auth_atom_id"]
-                        
-                        subunits_set.add(prot_subunit)
-                        atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom
+                        if prot:
+                            residue = prot["label_comp_id"] + " " + str(prot["auth_seq_id"])
+                            prot_atom = prot["auth_atom_id"]
+                            prot_subunit = prot["auth_asym_id"]
+                            ligand_code = lig["label_comp_id"]
+                            lig_atom = lig["auth_atom_id"]
+                            
+                            subunits_set.add(prot_subunit)
+                            atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom
 
-                        if subunit:
-                            residue += "-" + prot_subunit
+                            if subunit:
+                                residue += "-" + prot_subunit
+                            else:
+                                atoms += f"({prot_subunit})"
+
+                            if residue not in aa:
+                                aa[residue] = cont
+                                cont += 1
+                            column = aa[residue]
+
+                            # Ensure matrix size and modify cell
+                            if len(matrix) <= column:
+                                matrix.append([""] * len(files))
+
+                            for interaction in contact:
+                                matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
                         else:
-                            atoms += f"({prot_subunit})"
-
-                        if residue not in aa:
-                            aa[residue] = cont
-                            cont += 1
-                        column = aa[residue]
-
-                        # Ensure matrix size and modify cell
-                        if len(matrix) <= column:
-                            matrix.append([""] * len(files))
-
-                        for interaction in contact:
-                            matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
+                            print("Cannot determine which is the protein section (" + inter + ")")
  
                 # En este caso no vale, se debe detectar el combre del ligando    
                 files[index] = file.replace(".json", "")
