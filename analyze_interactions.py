@@ -373,6 +373,11 @@ class AnalyzeInteractions:
                         drug_name = columns[i]
                         columns[i] = f"{drug_name} ({data_dict.get(drug_name, '0')})"
 
+            else:
+                for i in range(1, len(columns)):
+                    drug_name = columns[i]
+                    columns[i] = f"{drug_name} (0)"
+
             # Insert headers into the matrix
             matrix.insert(0, columns)
             for i, row in enumerate(matrix[1:], start=1):
@@ -573,6 +578,17 @@ class AnalyzeInteractions:
         def validate_file(filename):
             return True if filename.count(' ') == 0 else False
         
+        def check_directory(directory):
+            if not os.path.exists(directory):
+                raise FileOrDirectoryException(path=directory, error_type='not_found')
+            elif not os.path.isdir(directory):
+                raise FileOrDirectoryException(path=directory, error_type='not_found')
+            else:
+                files = os.listdir(directory)
+                if not files:
+                    raise FileOrDirectoryException(path=directory, error_type='empty')
+            return files
+
         # Validate input types
         self._check_variable_types(
             variables=[directory, predictor, activity_file, protein, ligand, subunit, save],
@@ -580,9 +596,8 @@ class AnalyzeInteractions:
             variable_names=['directory', 'predictor', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
         )
 
-        # Check if the directory exists
-        if not os.path.exists(directory):
-            raise FileOrDirectoryNotFoundException(path=directory)
+        # Check the directory and return its files
+        files = check_directory(directory=directory)
         
         # Check if the predictor is registered
         if predictor not in PREDICTORS:
@@ -590,17 +605,12 @@ class AnalyzeInteractions:
         else:
             self.set_plot_config(mode=predictor)
 
-        files = os.listdir(directory)
-        if not files:
-            raise EmptyDirectoryException(path=directory)
-
         ligands = [None] * len(files)
         matrix = []
         aa = {}
         cont = 0
         subunits_set = set()
         failed_files = []
-        passed_files = 0
         
         if predictor == 'ichem':
             # Analyze each file in the directory
@@ -633,7 +643,6 @@ class AnalyzeInteractions:
                                     matrix.append([""] * len(files))
 
                                 matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=INTERACTION_LABELS)
-                    passed_files += 1
                 else:
                     failed_files.append(file_path)
                 ligands[index] = file.replace(".txt", "")
@@ -686,10 +695,9 @@ class AnalyzeInteractions:
                                 matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
                         else:
                             print("Cannot determine which is the protein section (" + inter + ")")
-                    passed_files += 1
                 else:   
                     failed_files.append(file_path)
-                # En este caso no vale, se debe detectar el combre del ligando    
+                # En este caso no vale, se debe detectar el nombre del ligando    
                 files[index] = file.replace(".json", "")
                 ligands[index] = ligand_code
         if len(failed_files) > 0:
@@ -906,8 +914,8 @@ class AnalyzeInteractions:
                         filtered[i][j] = cell if cell else EMPTY_DASH_CELL
         
         # Raise an error if no changes were made (no desired subunits found)
-        if changes == 0:
-            raise ValueError("The matrix does not contain any of the desired subunits.")
+        '''if changes == 0:
+            raise ValueError("The matrix does not contain any of the desired subunits.")'''
 
         # Transpose the matrix back if it was originally in columns
         if axis == "columns":
@@ -1003,9 +1011,8 @@ class AnalyzeInteractions:
             return result_list, indices
 
         # Calculate stacked data if necessary
-        if stacked or show_pie_chart:
-            data, indices = stack_reactives(matrix=matrix, axis=axis)
-            transposed_data = self.transpose_matrix(data)
+        data, indices = stack_reactives(matrix=matrix, axis=axis)
+        transposed_data = self.transpose_matrix(data)
 
         # Plot pie chart if requested
         if show_pie_chart:
@@ -1486,16 +1493,17 @@ class TypeMismatchException(Exception):
         self.message = f"Variable '{variable_name}' has type {actual_type.__name__}, expected one of ({expected_types_str})."
         super().__init__(self.message)
 
-class FileOrDirectoryNotFoundException(Exception):
-    def __init__(self, path, message="File or directory not found"):
+class FileOrDirectoryException(Exception):
+    def __init__(self, path, error_type, message=None):
         self.path = path
-        self.message = f"{message}: '{path}'"
-        super().__init__(self.message)
-
-class EmptyDirectoryException(Exception):
-    def __init__(self, path):
-        self.path = path
-        self.message = f"Directory '{path}' is empty"
+        self.error_type = error_type  # Puede ser 'not_found' o 'empty'
+        
+        default_messages = {
+            'not_found': f"File or directory not found: '{path}'",
+            'empty': f"Directory '{path}' is empty"
+        }
+        
+        self.message = message if message else default_messages.get(error_type, "An error occurred")
         super().__init__(self.message)
 
 class InvalidColorException(Exception):
