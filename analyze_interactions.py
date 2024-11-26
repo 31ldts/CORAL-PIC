@@ -570,6 +570,9 @@ class AnalyzeInteractions:
             else:
                 return end, begin
 
+        def validate_file(filename):
+            return True if filename.count(' ') == 0 else False
+        
         # Validate input types
         self._check_variable_types(
             variables=[directory, predictor, activity_file, protein, ligand, subunit, save],
@@ -596,12 +599,14 @@ class AnalyzeInteractions:
         aa = {}
         cont = 0
         subunits_set = set()
+        failed_files = []
+        passed_files = 0
         
         if predictor == 'ichem':
             # Analyze each file in the directory
             for index, file in enumerate(files):
                 file_path = os.path.join(directory, file)
-                if os.path.isfile(file_path):
+                if os.path.isfile(file_path) and validate_file(file):
                     content = read_file(file_path)
                     for line in content:
                         elements = line.split(GROUP_DELIM)
@@ -628,14 +633,16 @@ class AnalyzeInteractions:
                                     matrix.append([""] * len(files))
 
                                 matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=INTERACTION_LABELS)
-                        
+                    passed_files += 1
+                else:
+                    failed_files.append(file_path)
                 ligands[index] = file.replace(".txt", "")
             files = None
         elif predictor == 'arpeggio':
             # Analyze each file in the directory
             for index, file in enumerate(files):
                 file_path = os.path.join(directory, file)
-                if os.path.isfile(file_path):
+                if os.path.isfile(file_path) and validate_file(file):
                     content = read_file(file_path)
                     # Filter to obtain entries with interacting_entities == INTER
                     inter_set = [elem for elem in content if elem["interacting_entities"] in ARPEGGIO_INT_ENT]
@@ -679,10 +686,14 @@ class AnalyzeInteractions:
                                 matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
                         else:
                             print("Cannot determine which is the protein section (" + inter + ")")
- 
+                    passed_files += 1
+                else:   
+                    failed_files.append(file_path)
                 # En este caso no vale, se debe detectar el combre del ligando    
                 files[index] = file.replace(".json", "")
                 ligands[index] = ligand_code
+        if len(failed_files) > 0:
+            raise InvalidFilenameException(failed_files)
 
         if not subunit:
             matrix = adjust_subunits(matrix=matrix)
@@ -1518,4 +1529,14 @@ class InvalidPredictorException(Exception):
         for value in PREDICTORS:
             expected_values += "\n\t- " + value
         self.message = f"Invalid predictor value: '{predictor}'. Expected:{expected_values}"
+        super().__init__(self.message)
+
+class InvalidFilenameException(Exception):
+    """Exception raised for invalid predictor values."""
+    def __init__(self, filenames):
+        self.filenames = filenames
+        output = ""
+        for filename in self.filenames:
+            output += "\n\t- " + filename
+        self.message = f"Some files have an invalid file name: {output}. \nFile names must not contain spaces."
         super().__init__(self.message)
