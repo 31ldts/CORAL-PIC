@@ -589,6 +589,79 @@ class AnalyzeInteractions:
                     raise FileOrDirectoryException(path=directory, error_type='empty')
             return files
 
+        def ichem_analysis(content, index, files, subunits_set, cont, matrix, aa):
+            for line in content:
+                elements = line.split(GROUP_DELIM)
+                if len(elements) == 10:
+                    interaction = elements[0].strip().replace("\t", "")
+                    residue = elements[3].strip().replace("\t", "")
+                    if validate_string(residue):
+                        if not subunit:
+                            sections = residue.split("-")
+                            residue = sections[0]
+                            subunits_set.add(sections[1])
+
+                        atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
+                        if not subunit:
+                            atoms += f"({sections[1]})"
+
+                        if residue not in aa:
+                            aa[residue] = cont
+                            cont += 1
+                        column = aa[residue]
+
+                        # Ensure matrix size and modify cell
+                        if len(matrix) <= column:
+                            matrix.append([""] * len(files))
+
+                        matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=INTERACTION_LABELS)
+            return matrix, aa, cont, subunits_set
+
+        def arpeggio_analysis(content, index, files, subunits_set, cont, matrix, aa):
+            # Filter to obtain entries with interacting_entities == INTER
+            inter_set = [elem for elem in content if elem["interacting_entities"] in ARPEGGIO_INT_ENT]
+            # Filter to obtain entries with the desired contact or type
+            inter_set = [
+                elem for elem in inter_set
+                for contact in elem["contact"]
+                if contact in ARPEGGIO_CONT or elem["type"] in ARPEGGIO_TYPE
+            ]
+            for inter in inter_set:
+                if inter["type"] in ARPEGGIO_TYPE:
+                    contact = inter["type"]
+                else:
+                    contact = [conta for conta in inter["contact"] if conta in ARPEGGIO_CONT]
+                prot, lig = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
+                if prot:
+                    residue = prot["label_comp_id"] + " " + str(prot["auth_seq_id"])
+                    prot_atom = prot["auth_atom_id"]
+                    prot_subunit = prot["auth_asym_id"]
+                    ligand_code = lig["label_comp_id"]
+                    lig_atom = lig["auth_atom_id"]
+                    
+                    subunits_set.add(prot_subunit)
+                    atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom
+
+                    if subunit:
+                        residue += "-" + prot_subunit
+                    else:
+                        atoms += f"({prot_subunit})"
+
+                    if residue not in aa:
+                        aa[residue] = cont
+                        cont += 1
+                    column = aa[residue]
+
+                    # Ensure matrix size and modify cell
+                    if len(matrix) <= column:
+                        matrix.append([""] * len(files))
+
+                    for interaction in contact:
+                        matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
+                else:
+                    print("Cannot determine which is the protein section (" + inter + ")")
+            return matrix, ligand_code, aa, cont, subunits_set
+        
         # Validate input types
         self._check_variable_types(
             variables=[directory, predictor, activity_file, protein, ligand, subunit, save],
@@ -612,94 +685,27 @@ class AnalyzeInteractions:
         subunits_set = set()
         failed_files = []
         
-        if predictor == 'ichem':
-            # Analyze each file in the directory
-            for index, file in enumerate(files):
-                file_path = os.path.join(directory, file)
-                if os.path.isfile(file_path) and validate_file(file):
-                    content = read_file(file_path)
-                    for line in content:
-                        elements = line.split(GROUP_DELIM)
-                        if len(elements) == 10:
-                            interaction = elements[0].strip().replace("\t", "")
-                            residue = elements[3].strip().replace("\t", "")
-                            if validate_string(residue):
-                                if not subunit:
-                                    sections = residue.split("-")
-                                    residue = sections[0]
-                                    subunits_set.add(sections[1])
-
-                                atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
-                                if not subunit:
-                                    atoms += f"({sections[1]})"
-
-                                if residue not in aa:
-                                    aa[residue] = cont
-                                    cont += 1
-                                column = aa[residue]
-
-                                # Ensure matrix size and modify cell
-                                if len(matrix) <= column:
-                                    matrix.append([""] * len(files))
-
-                                matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=INTERACTION_LABELS)
+        # Analyze each file in the directory
+        for index, file in enumerate(files):
+            file_path = os.path.join(directory, file)
+            if os.path.isfile(file_path) and validate_file(file):
+                content = read_file(file_path)
+                if predictor == 'ichem':
+                    matrix, aa, cont, subunits_set = ichem_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
+                elif predictor == 'arpeggio':
+                    matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
                 else:
-                    failed_files.append(file_path)
+                    raise InvalidPredictorException(predictor=predictor)
+            else:
+                failed_files.append(file_path)
+            if predictor == 'ichem':
                 ligands[index] = file.replace(".txt", "")
-            files = None
-        elif predictor == 'arpeggio':
-            # Analyze each file in the directory
-            for index, file in enumerate(files):
-                file_path = os.path.join(directory, file)
-                if os.path.isfile(file_path) and validate_file(file):
-                    content = read_file(file_path)
-                    # Filter to obtain entries with interacting_entities == INTER
-                    inter_set = [elem for elem in content if elem["interacting_entities"] in ARPEGGIO_INT_ENT]
-                    # Filter to obtain entries with the desired contact or type
-                    inter_set = [
-                        elem for elem in inter_set
-                        for contact in elem["contact"]
-                        if contact in ARPEGGIO_CONT or elem["type"] in ARPEGGIO_TYPE
-                    ]
-                    for inter in inter_set:
-                        if inter["type"] in ARPEGGIO_TYPE:
-                            contact = inter["type"]
-                        else:
-                            contact = [cont for cont in inter["contact"] if cont in ARPEGGIO_CONT]
-                        prot, lig = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
-                        if prot:
-                            residue = prot["label_comp_id"] + " " + str(prot["auth_seq_id"])
-                            prot_atom = prot["auth_atom_id"]
-                            prot_subunit = prot["auth_asym_id"]
-                            ligand_code = lig["label_comp_id"]
-                            lig_atom = lig["auth_atom_id"]
-                            
-                            subunits_set.add(prot_subunit)
-                            atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom
-
-                            if subunit:
-                                residue += "-" + prot_subunit
-                            else:
-                                atoms += f"({prot_subunit})"
-
-                            if residue not in aa:
-                                aa[residue] = cont
-                                cont += 1
-                            column = aa[residue]
-
-                            # Ensure matrix size and modify cell
-                            if len(matrix) <= column:
-                                matrix.append([""] * len(files))
-
-                            for interaction in contact:
-                                matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
-                        else:
-                            print("Cannot determine which is the protein section (" + inter + ")")
-                else:   
-                    failed_files.append(file_path)
-                # En este caso no vale, se debe detectar el nombre del ligando    
+            elif predictor == 'arpeggio':
                 files[index] = file.replace(".json", "")
                 ligands[index] = ligand_code
+        if predictor == 'ichem':
+            files = None       
+                
         if len(failed_files) > 0:
             raise InvalidFilenameException(failed_files)
 
@@ -1547,4 +1553,10 @@ class InvalidFilenameException(Exception):
         for filename in self.filenames:
             output += "\n\t- " + filename
         self.message = f"Some files have an invalid file name: {output}. \nFile names must not contain spaces."
+        super().__init__(self.message)
+
+class HeatmapActivityException(Exception):
+    """Exception raised for invalid predictor values."""
+    def __init__(self):
+        self.message = "Heatmap modes' max, min and mean require ligand/complex activities."
         super().__init__(self.message)
