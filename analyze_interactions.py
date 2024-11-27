@@ -933,6 +933,102 @@ class AnalyzeInteractions:
 
         return filtered
 
+    def filter_chain(self, matrix: list[list[str]], chain: str = None, subpocket_path: str = None, subpockets: list[str] = None, save: str = None) -> list[list[str]]:
+        """
+        Filters a matrix based on specified chain and subpocket.
+
+        Args:
+            matrix (list): The matrix to filter, represented as a list of lists.
+            chain (str): The chain to filter.
+            subpocket (str): The subpocket to filter.
+            save (str, optional): The filename to save the filtered matrix. If None, the matrix will not be saved.
+
+        Returns:
+            list: The filtered matrix with only the specified chain and subpocket.
+
+        Raises:
+            ValueError: If the matrix dimensions are invalid or if the chain or subpocket are not valid.
+        """
+
+        def get_chain(cell: str) -> str:
+            """
+            Extracts the chain from a cell string.
+
+            Args:
+                cell (str): The cell string containing chain data.            
+
+            Returns:
+                str: The chain extracted from the cell string.
+            """
+            return cell.split(GROUP_DELIM)[0].split(' ')[0]
+
+        def get_subpocket(cell: str) -> str:
+            """
+            Extracts the subpocket from a cell string.
+
+            Args:
+                cell (str): The cell string containing subpocket data.            
+
+            Returns:
+                str: The subpocket extracted from the cell string.
+            """
+            return cell.split(GROUP_DELIM)[0].split(' ')[1]
+
+        def get_subpockets(subpocket_path: str, subpockets: list[str]) -> list[str]:
+
+            residues = []
+            
+            with open(subpocket_path, mode='r', encoding='utf-8') as archivo_csv:
+                lector = csv.reader(archivo_csv)
+                
+                for fila in lector:
+                    if fila[0] in subpockets:
+                        elementos_segunda_columna = fila[1].split(', ')
+                        residues.extend(elementos_segunda_columna)
+            
+            return residues
+        
+        def filtrar_lista(matrix: list[list[str]], resultado: list[str]) -> list[list[str]]:
+            # Mantener la primera fila (encabezado) siempre
+            matriz_filtrada = [matrix[0]]
+            
+            # Revisar cada fila a partir de la segunda
+            for fila in matrix[1:]:
+                if fila[0].replace(" ", "") in resultado:
+                    matriz_filtrada.append(fila)
+            
+            return matriz_filtrada
+
+
+        # Check types of the matrix, chain, and subpocket
+        self._check_variable_types(
+            variables=[matrix, chain, subpockets, subpocket_path, save],
+            expected_types=[list, (str, None.__class__), (list, None.__class__), (str, None.__class__), (str, None.__class__)],
+            variable_names=['matrix', 'chain', 'subpockets', 'subpocket_path', 'save']
+        )
+
+        # Validate the dimensions of the matrix
+        self._verify_dimensions(matrix=matrix)
+
+        # Create a deep copy of the matrix to avoid modifying the original
+        filtered = copy.deepcopy(matrix)
+
+        eje = self._get_residues_axis(matrix=filtered)
+
+        if eje == 'columns':
+            filtered = self.transpose_matrix(matrix=filtered)
+
+        if subpockets and subpocket_path:
+            residues = get_subpockets(subpocket_path=subpocket_path, subpockets=subpockets)
+            filtered = filtrar_lista(matrix=filtered, resultado=residues)
+
+        if eje == 'columns':
+            filtered = self.transpose_matrix(matrix=filtered)
+        if save:
+            self.save_matrix(matrix=filtered, filename=save)
+
+        return filtered
+
     def plot_matrix(self,
         matrix: list[list[str]],
         plot_name: str,
