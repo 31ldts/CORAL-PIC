@@ -6,6 +6,10 @@ import mplcursors
 import copy
 import re
 import json
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import operator
 
 ###########
 # Globals #
@@ -1028,6 +1032,176 @@ class AnalyzeInteractions:
             self.save_matrix(matrix=filtered, filename=save)
 
         return filtered
+
+
+    def heatmap(self, matrix: list[list[str]], title: str, mode: str, save: bool = False):
+        def check_activities(matrix: list[list[str]]):
+            for ligand in matrix[0][1:]:
+                activity = ligand.split('(')[-1].replace(")", "")
+                if float(activity) < 0.0:
+                    raise HeatmapActivityException
+            return self.transpose_matrix(matrix=matrix), ini_data(matrix=matrix)
+    
+        def ini_data(matrix: list[list[str]]) -> list[list[float]]:
+            data = {}
+            for line in matrix[1:]:
+                residue = line[0].split('-')[0]
+                data[residue] = [np.nan for _ in range(len(self.interaction_labels))]
+            return data
+
+        def min_max_matrix(matrix: list[list[str]], mode: str) -> list[list[str]]:
+            matrix, data = check_activities(matrix=matrix)
+            op = operator.lt if mode == 'min' else operator.gt
+            '''Mirar los labels actuales de interacciones
+                para cada interacción tener una lista en la que en cada celta tendremos inf
+                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
+            
+            for line in matrix[1:]:
+                activity = float(line[0].split('(')[-1].replace(")", ""))
+                for index in range(1, len(line)):
+                    residue = matrix[0][index].split('-')[0]
+                    cell = line[index]
+                    sections = cell.split(DIFF_DELIM)
+                    for section in sections:
+                        if not section.split(' ')[0] in EMPTY_CELL:
+                            interaction = int(section.split(' ')[0]) - 1
+                            if np.isnan(data[residue][interaction]) or op(activity, data[residue][interaction]):
+                                data[residue][interaction] = activity
+
+            return data
+
+        def mean_matrix(matrix: list[list[str]]) -> list[list[str]]: 
+            matrix, data = check_activities(matrix=matrix)
+            #op = operator.lt if mode == 'min' else operator.gt
+            '''Mirar los labels actuales de interacciones
+                para cada interacción tener una lista en la que en cada celta tendremos inf
+                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
+            
+            for line in matrix[1:]:
+                activity = float(line[0].split('(')[-1].replace(")", ""))
+                for index in range(1, len(line)):
+                    residue = matrix[0][index].split('-')[0]
+                    cell = line[index]
+                    sections = cell.split(DIFF_DELIM)
+                    for section in sections:
+                        if not section.split(' ')[0] in EMPTY_CELL:
+                            interaction = int(section.split(' ')[0]) - 1
+                            if not isinstance(data[residue][interaction], list):
+                                data[residue][interaction] = [1, activity]
+                            else:
+                                acumulado = data[residue][interaction]
+                                data[residue][interaction] = [acumulado[0] + 1, acumulado[1] + activity]
+            for key, value in data.items():
+                for index, cell in enumerate(value):
+                    if isinstance(cell, list):
+                        data[key][index] = round(cell[1]/cell[0], 2)
+                    
+            return data
+        
+        def count_matrix(matrix: list[list[str]]) -> list[list[str]]: 
+            matrix, data = self.transpose_matrix(matrix=matrix), ini_data(matrix=matrix)
+            #op = operator.lt if mode == 'min' else operator.gt
+            '''Mirar los labels actuales de interacciones
+                para cada interacción tener una lista en la que en cada celta tendremos inf
+                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
+            
+            for line in matrix[1:]:
+                for index in range(1, len(line)):
+                    residue = matrix[0][index].split('-')[0]
+                    cell = line[index]
+                    sections = cell.split(DIFF_DELIM)
+                    for section in sections:
+                        if not section.split(' ')[0] in EMPTY_CELL:
+                            interaction = int(section.split(' ')[0]) - 1
+                            if np.isnan(data[residue][interaction]):
+                                data[residue][interaction] = 1
+                            else:
+                                data[residue][interaction] += 1
+            return data
+        
+        def percentage_matrix(matrix: list[list[str]]) -> list[list[str]]: 
+            matrix, data = self.transpose_matrix(matrix=matrix), ini_data(matrix=matrix)
+            #op = operator.lt if mode == 'min' else operator.gt
+            '''Mirar los labels actuales de interacciones
+                para cada interacción tener una lista en la que en cada celta tendremos inf
+                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
+            
+            for line in matrix[1:]:
+                for index in range(1, len(line)):
+                    residue = matrix[0][index].split('-')[0]
+                    cell = line[index]
+                    sections = cell.split(DIFF_DELIM)
+                    for section in sections:
+                        if not section.split(' ')[0] in EMPTY_CELL:
+                            interaction = int(section.split(' ')[0]) - 1
+                            if np.isnan(data[residue][interaction]):
+                                data[residue][interaction] = 1
+                            else:
+                                data[residue][interaction] += 1
+
+            for key, value in data.items():
+                for index, cell in enumerate(value):
+                    data[key][index] = cell/(len(matrix)-1)*100
+                    
+            return data
+    
+        self._check_variable_types(
+            variables=[matrix, title, mode, save], 
+            expected_types=[list, str, str, bool], 
+            variable_names=['matrix', 'title', 'mode', 'save']
+        )
+
+        if self._get_residues_axis == 'columns':
+            matrix = self.transpose_matrix(matrix=matrix)
+
+        if mode == 'min' or mode == 'max':
+            data = min_max_matrix(matrix=matrix, mode=mode)
+        elif mode == 'mean':
+            data = mean_matrix(matrix=matrix)
+        elif mode == 'count':
+            data = count_matrix(matrix=matrix)
+        elif mode == 'percentage':
+            data = percentage_matrix(matrix=matrix)
+        else:
+            raise Exception
+
+        df = pd.DataFrame(data, index=self.interaction_labels)
+        max_cols = 30  # Máximo número de columnas por heatmap
+        num_cols = len(df.columns)
+
+        # Calcular el rango global de valores
+        vmin, vmax = df.min().min(), df.max().max()
+
+        # Calcular cuántos heatmaps necesitamos
+        num_heatmaps = (num_cols + max_cols - 1) // max_cols  # Redondeo hacia arriba
+        cols_per_heatmap = (num_cols + num_heatmaps - 1) // num_heatmaps  # Distribución equitativa
+
+        for i in range(num_heatmaps):
+            # Rango de columnas para este heatmap
+            start_col = i * cols_per_heatmap
+            end_col = min((i + 1) * cols_per_heatmap, num_cols)  # Limitar al rango de columnas existentes
+            df_subset = df.iloc[:, start_col:end_col]
+
+            # Configurar el tamaño de la figura
+            plt.figure(figsize=(14, 9))
+
+            # Crear el heatmap
+            sns.heatmap(df_subset, annot=True, cmap="coolwarm", fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax)
+
+            # Título para el heatmap con el rango de columnas
+            plt.title(f"{title} (Columns {start_col + 1}-{end_col})")
+
+            # Ajustar diseño
+            plt.tight_layout()
+
+            # Mostrar o guardar el gráfico
+            if not save:
+                plt.show()
+            else:
+                # Guardar con un nombre único
+                filename = os.path.join(self.saving_directory, f"{title}_part_{i + 1}.png")
+                plt.savefig(filename)
+                plt.close()
 
     def plot_matrix(self,
         matrix: list[list[str]],
