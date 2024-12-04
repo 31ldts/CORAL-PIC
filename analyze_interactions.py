@@ -28,8 +28,12 @@ COLORS = [
 ]
 
 # List of predictors
-PREDICTORS = [
+PREDICTOR_MODES = [
     "ichem", "arpeggio"
+]
+
+HEATMAP_MODES = [
+    "max", "min", "mean", "count", "percent"
 ]
 
 # Arpeggio interaction entities
@@ -83,10 +87,12 @@ class AnalyzeInteractions:
         """Initializes the class with the current working directory and default settings."""
         self.saving_directory = os.getcwd()  # Set the default saving directory
         self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
-        self.colors = COLORS  # Default color configuration
         self.codes = True
-        self.max_elements_per_plot = 80
+        self.plot_colors = COLORS  # Default color configuration
+        self.plot_max_cols = 80
         self.aa = AMINO_ACID_CODES
+        self.heat_max_cols = 30
+        self.heat_colors = "RdYlGn"
 
     ###################
     # Private Methods #
@@ -215,12 +221,15 @@ class AnalyzeInteractions:
         # Update the saving directory
         self.saving_directory = new_path
 
-    def set_plot_config(
+    def set_config(
             self, 
             interactions: list[str] = None, 
-            colors: list[str] = None, 
+            plot_max_cols: int = None,
+            plot_colors: list[str] = None, 
             reset: bool = False,
-            mode: str = None
+            mode: str = None,
+            heat_max_cols: int = None,
+            heat_colors: str = None
             ) -> None:
         """
         Updates interaction labels and colors or resets them to default values.
@@ -257,12 +266,12 @@ class AnalyzeInteractions:
                 None
             """
             self.interaction_labels = INTERACTION_LABELS
-            self.colors = COLORS
+            self.plot_colors = COLORS
 
         self._check_variable_types(
-            variables=[interactions, colors, reset, mode],
-            expected_types=[(list, None.__class__), (list, None.__class__), bool, (str, None.__class__)],
-            variable_names=['interactions', 'colors', 'reset', 'mode']
+            variables=[interactions, plot_max_cols, plot_colors, reset, mode, heat_max_cols, heat_colors],
+            expected_types=[(list, None.__class__), (int, None.__class__), (list, None.__class__), bool, (str, None.__class__), (int, None.__class__), (str, None.__class__)],
+            variable_names=['interactions', 'plot_max_cols', 'colors', 'reset', 'mode', 'heat_max_elems', 'heat_colors']
         )
 
         # Perform reset if requested
@@ -275,21 +284,27 @@ class AnalyzeInteractions:
             self.interaction_labels = interactions
 
         # Update colors if provided and valid
-        if colors:
-            invalid_colors = [color for color in colors if not is_valid_hex_color(color)]
+        if plot_colors:
+            invalid_colors = [color for color in plot_colors if not is_valid_hex_color(color)]
             if invalid_colors:
                 raise InvalidColorException(invalid_colors)
-            self.colors = colors
+            self.plot_colors = plot_colors
 
         if mode:
             if mode == 'ichem':
                 self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
-                self.colors = COLORS  # Default color configuration
+                self.plot_colors = COLORS  # Default color configuration
             elif mode == 'arpeggio':
                 self.interaction_labels = ARPEGGIO_CONT + ARPEGGIO_TYPE  # Default interaction labels
-                self.colors = ARPEGGIO_COLORS  # Default color c
+                self.plot_colors = ARPEGGIO_COLORS  # Default color c
             else:
-                raise InvalidPredictorException(predictor=mode)
+                raise InvalidModeException(mode=mode, expected_values=PREDICTOR_MODES)
+        if plot_max_cols:
+            self.plot_max_cols = plot_max_cols
+        if heat_max_cols:
+            self.heat_max_cols = heat_max_cols
+        if heat_colors:
+            self.heat_colors = heat_colors
 
     #################################
     # Public Methods: Functionality #
@@ -677,10 +692,10 @@ class AnalyzeInteractions:
         files = check_directory(directory=directory)
         
         # Check if the predictor is registered
-        if predictor not in PREDICTORS:
-            raise InvalidPredictorException(predictor=predictor)
+        if predictor not in PREDICTOR_MODES:
+            raise InvalidModeException(mode=predictor, expected_values=PREDICTOR_MODES)
         else:
-            self.set_plot_config(mode=predictor)
+            self.set_config(mode=predictor)
 
         ligands = [None] * len(files)
         matrix = []
@@ -699,7 +714,7 @@ class AnalyzeInteractions:
                 elif predictor == 'arpeggio':
                     matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
                 else:
-                    raise InvalidPredictorException(predictor=predictor)
+                    raise Exception
             else:
                 failed_files.append(file_path)
             if predictor == 'ichem':
@@ -1034,7 +1049,7 @@ class AnalyzeInteractions:
         return filtered
 
 
-    def heatmap(self, matrix: list[list[str]], title: str, mode: str, save: bool = False):
+    def heatmap(self, matrix: list[list[str]], title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, save: bool = False):
         def check_activities(matrix: list[list[str]]):
             for ligand in matrix[0][1:]:
                 activity = ligand.split('(')[-1].replace(")", "")
@@ -1119,7 +1134,7 @@ class AnalyzeInteractions:
                                 data[residue][interaction] += 1
             return data
         
-        def percentage_matrix(matrix: list[list[str]]) -> list[list[str]]: 
+        def percent_matrix(matrix: list[list[str]]) -> list[list[str]]: 
             matrix, data = self.transpose_matrix(matrix=matrix), ini_data(matrix=matrix)
             #op = operator.lt if mode == 'min' else operator.gt
             '''Mirar los labels actuales de interacciones
@@ -1146,9 +1161,9 @@ class AnalyzeInteractions:
             return data
     
         self._check_variable_types(
-            variables=[matrix, title, mode, save], 
-            expected_types=[list, str, str, bool], 
-            variable_names=['matrix', 'title', 'mode', 'save']
+            variables=[matrix, title, x_label, y_label, mode, min_v, max_v, save], 
+            expected_types=[list, str, str, str, str, (int, None.__class__), (int, None.__class__), bool], 
+            variable_names=['matrix', 'title', 'x_label', 'y_label', 'mode', 'min_v', 'max_v', 'save']
         )
 
         if self._get_residues_axis == 'columns':
@@ -1160,17 +1175,18 @@ class AnalyzeInteractions:
             data = mean_matrix(matrix=matrix)
         elif mode == 'count':
             data = count_matrix(matrix=matrix)
-        elif mode == 'percentage':
-            data = percentage_matrix(matrix=matrix)
+        elif mode == 'percent':
+            data = percent_matrix(matrix=matrix)
         else:
-            raise Exception
+            raise InvalidModeException(mode=mode, expected_values=HEATMAP_MODES)
 
         df = pd.DataFrame(data, index=self.interaction_labels)
-        max_cols = 30  # Máximo número de columnas por heatmap
+        max_cols = self.heat_max_cols  # Máximo número de columnas por heatmap
         num_cols = len(df.columns)
 
         # Calcular el rango global de valores
-        vmin, vmax = df.min().min(), df.max().max()
+        vmin = min_v if min_v else df.min().min()
+        vmax = max_v if max_v else df.max().max()
 
         # Calcular cuántos heatmaps necesitamos
         num_heatmaps = (num_cols + max_cols - 1) // max_cols  # Redondeo hacia arriba
@@ -1186,10 +1202,14 @@ class AnalyzeInteractions:
             plt.figure(figsize=(14, 9))
 
             # Crear el heatmap
-            sns.heatmap(df_subset, annot=True, cmap="coolwarm", fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax)
+            sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax)
 
             # Título para el heatmap con el rango de columnas
             plt.title(f"{title} (Columns {start_col + 1}-{end_col})")
+
+            # Etiquetas de los ejes
+            plt.xlabel(x_label)
+            plt.ylabel(y_label)
 
             # Ajustar diseño
             plt.tight_layout()
@@ -1235,7 +1255,7 @@ class AnalyzeInteractions:
         """
 
         if colors is None:
-            colors = self.colors
+            colors = self.plot_colors
 
         # Ensure the number of colors matches the number of interaction labels
         if len(colors) < len(self.interaction_labels):
@@ -1322,7 +1342,7 @@ class AnalyzeInteractions:
 
         else:
             # Create a new figure for the bar chart
-            max_elements_per_plot = self.max_elements_per_plot
+            max_elements_per_plot = self.plot_max_cols
             num_x_elements = len(indices)
 
             # Divide data into multiple plots if necessary
@@ -1805,16 +1825,6 @@ class InvalidAxisException(Exception):
         self.message = f"Invalid axis value: '{axis_value}'. Expected 'rows' or 'columns'."
         super().__init__(self.message)
 
-class InvalidPredictorException(Exception):
-    """Exception raised for invalid predictor values."""
-    def __init__(self, predictor):
-        self.predictor_value = predictor
-        expected_values = ""
-        for value in PREDICTORS:
-            expected_values += "\n\t- " + value
-        self.message = f"Invalid predictor value: '{predictor}'. Expected:{expected_values}"
-        super().__init__(self.message)
-
 class InvalidFilenameException(Exception):
     """Exception raised for invalid predictor values."""
     def __init__(self, filenames):
@@ -1829,4 +1839,10 @@ class HeatmapActivityException(Exception):
     """Exception raised for invalid predictor values."""
     def __init__(self):
         self.message = "Heatmap modes' max, min and mean require ligand/complex activities."
+        super().__init__(self.message)
+
+class InvalidModeException(Exception):
+    """Exception raised for invalid predictor values."""
+    def __init__(self, mode, expected_values):
+        self.message = f"Invalid mode value: '{mode}'. Expected:{expected_values}"
         super().__init__(self.message)
