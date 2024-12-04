@@ -265,8 +265,14 @@ class AnalyzeInteractions:
             Returns:
                 None
             """
-            self.interaction_labels = INTERACTION_LABELS
-            self.plot_colors = COLORS
+            self.saving_directory = os.getcwd()  # Set the default saving directory
+            self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
+            self.codes = True
+            self.plot_colors = COLORS  # Default color configuration
+            self.plot_max_cols = 80
+            self.aa = AMINO_ACID_CODES
+            self.heat_max_cols = 30
+            self.heat_colors = "RdYlGn"
 
         self._check_variable_types(
             variables=[interactions, plot_max_cols, plot_colors, reset, mode, heat_max_cols, heat_colors],
@@ -1048,180 +1054,199 @@ class AnalyzeInteractions:
 
         return filtered
 
-
     def heatmap(self, matrix: list[list[str]], title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, save: bool = False):
-        def check_activities(matrix: list[list[str]]):
+        """
+        Generates a heatmap based on the given interaction matrix and processing mode.
+
+        This method processes the provided matrix, calculates interaction statistics, and creates a visual heatmap. 
+        It supports various modes for data analysis and automatically adjusts the visualization for large datasets 
+        by splitting them into multiple heatmaps.
+
+        Args:
+            matrix (list[list[str]]): The input matrix containing interaction data.
+            title (str): The title to display on the heatmap.
+            mode (str): The processing mode. Supported modes include:
+                - 'min': Minimum interaction values.
+                - 'max': Maximum interaction values.
+                - 'mean': Average interaction values.
+                - 'count': Counts of interaction occurrences.
+                - 'percent': Percentage of interaction occurrences.
+            x_label (str, optional): The label for the x-axis. Defaults to an empty string.
+            y_label (str, optional): The label for the y-axis. Defaults to an empty string.
+            min_v (int, optional): The minimum value for the heatmap color scale. Defaults to None (automatic).
+            max_v (int, optional): The maximum value for the heatmap color scale. Defaults to None (automatic).
+            save (bool, optional): If True, saves the heatmap(s) to files instead of displaying them. Defaults to False.
+
+        Returns:
+            None: The function either displays the heatmap(s) or saves them to files.
+
+        Raises:
+            InvalidModeException: If the provided mode is not supported.
+            HeatmapActivityException: If an invalid activity value is encountered in the matrix.
+        """
+
+        def validate_and_prepare_matrix(matrix: list[list[str]]):
+            """
+            Validates the input matrix and prepares it for processing.
+            
+            This method checks that all ligand activity values in the matrix are non-negative and transposes the matrix 
+            if the residue axis is configured to be in columns.
+
+            Args:
+                matrix (list[list[str]]): The matrix to validate and prepare.
+
+            Returns:
+                list[list[str]]: The validated matrix.
+
+            Raises:
+                HeatmapActivityException: If any ligand activity value is negative.
+            """
+            if self._get_residues_axis == 'columns':
+                matrix = self.transpose_matrix(matrix=matrix)
             for ligand in matrix[0][1:]:
                 activity = ligand.split('(')[-1].replace(")", "")
                 if float(activity) < 0.0:
                     raise HeatmapActivityException
-            return self.transpose_matrix(matrix=matrix), ini_data(matrix=matrix)
-    
-        def ini_data(matrix: list[list[str]]) -> list[list[float]]:
+            return matrix
+
+        def process_matrix(matrix: list[list[str]], mode: str) -> dict:
+            """
+            Processes the matrix based on the specified mode.
+            
+            Depending on the mode, calculates metrics such as minimum, maximum, mean, count, or percentage of interactions.
+
+            Args:
+                matrix (list[list[str]]): The input matrix to process.
+                mode (str): The mode to process the data. Supported modes are 'min', 'max', 'mean', 'count', and 'percent'.
+
+            Returns:
+                dict: A dictionary mapping residues to interaction values processed according to the mode.
+            """
+            data, matrix = initialize_data(matrix=matrix)
+            op = {"min": operator.lt, "max": operator.gt}.get(mode, None)
+
+            for line in matrix[1:]:
+                activity = float(line[0].split('(')[-1].replace(")", ""))
+                for index in range(1, len(line)):
+                    residue = matrix[0][index].split('-')[0]
+                    cell = line[index]
+                    sections = cell.split(DIFF_DELIM)
+
+                    for section in sections:
+                        if section.split(' ')[0] not in EMPTY_CELL:
+                            interaction = int(section.split(' ')[0]) - 1
+                            current_value = data[residue][interaction]
+
+                            if mode in ["min", "max"]:
+                                if np.isnan(current_value) or op(activity, current_value):
+                                    data[residue][interaction] = activity
+                            elif mode == "mean":
+                                if not isinstance(current_value, list):
+                                    data[residue][interaction] = [1, activity]
+                                else:
+                                    count, total = current_value
+                                    data[residue][interaction] = [count + 1, total + activity]
+                            elif mode in ["count", "percent"]:
+                                if np.isnan(current_value):
+                                    data[residue][interaction] = 1
+                                else:
+                                    data[residue][interaction] += 1
+
+            if mode == "mean":
+                for residue, interactions in data.items():
+                    for i, value in enumerate(interactions):
+                        if isinstance(value, list):
+                            count, total = value
+                            data[residue][i] = round(total / count, 2)
+            elif mode == "percent":
+                num_lines = len(matrix) - 1
+                for residue, interactions in data.items():
+                    for i, value in enumerate(interactions):
+                        data[residue][i] = (value / num_lines * 100) if not np.isnan(value) else np.nan
+
+            return data
+
+        def initialize_data(matrix: list[list[str]]) -> list[list[float]]:
+            """
+            Initializes an empty data structure to store processed interaction values.
+
+            Args:
+                matrix (list[list[str]]): The input matrix to initialize data for.
+
+            Returns:
+                tuple: A tuple containing:
+                    - dict: The initialized data structure with residues as keys and NaN interaction values.
+                    - list[list[str]]: The transposed matrix for processing.
+            """
             data = {}
             for line in matrix[1:]:
                 residue = line[0].split('-')[0]
                 data[residue] = [np.nan for _ in range(len(self.interaction_labels))]
-            return data
+            return data, self.transpose_matrix(matrix=matrix)
 
-        def min_max_matrix(matrix: list[list[str]], mode: str) -> list[list[str]]:
-            matrix, data = check_activities(matrix=matrix)
-            op = operator.lt if mode == 'min' else operator.gt
-            '''Mirar los labels actuales de interacciones
-                para cada interacción tener una lista en la que en cada celta tendremos inf
-                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
-            
-            for line in matrix[1:]:
-                activity = float(line[0].split('(')[-1].replace(")", ""))
-                for index in range(1, len(line)):
-                    residue = matrix[0][index].split('-')[0]
-                    cell = line[index]
-                    sections = cell.split(DIFF_DELIM)
-                    for section in sections:
-                        if not section.split(' ')[0] in EMPTY_CELL:
-                            interaction = int(section.split(' ')[0]) - 1
-                            if np.isnan(data[residue][interaction]) or op(activity, data[residue][interaction]):
-                                data[residue][interaction] = activity
+        def plot_heatmap(self, data, title, x_label, y_label, mode, min_v, max_v, save):
+            """
+            Creates and optionally saves the heatmap visualization.
 
-            return data
+            Args:
+                data (dict): The processed interaction data to visualize.
+                title (str): The title for the heatmap.
+                x_label (str): Label for the x-axis.
+                y_label (str): Label for the y-axis.
+                mode (str): The mode used to process the data.
+                min_v (int, optional): Minimum value for the heatmap color scale.
+                max_v (int, optional): Maximum value for the heatmap color scale.
+                save (bool): Whether to save the heatmap to a file.
 
-        def mean_matrix(matrix: list[list[str]]) -> list[list[str]]: 
-            matrix, data = check_activities(matrix=matrix)
-            #op = operator.lt if mode == 'min' else operator.gt
-            '''Mirar los labels actuales de interacciones
-                para cada interacción tener una lista en la que en cada celta tendremos inf
-                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
-            
-            for line in matrix[1:]:
-                activity = float(line[0].split('(')[-1].replace(")", ""))
-                for index in range(1, len(line)):
-                    residue = matrix[0][index].split('-')[0]
-                    cell = line[index]
-                    sections = cell.split(DIFF_DELIM)
-                    for section in sections:
-                        if not section.split(' ')[0] in EMPTY_CELL:
-                            interaction = int(section.split(' ')[0]) - 1
-                            if not isinstance(data[residue][interaction], list):
-                                data[residue][interaction] = [1, activity]
-                            else:
-                                acumulado = data[residue][interaction]
-                                data[residue][interaction] = [acumulado[0] + 1, acumulado[1] + activity]
-            for key, value in data.items():
-                for index, cell in enumerate(value):
-                    if isinstance(cell, list):
-                        data[key][index] = round(cell[1]/cell[0], 2)
-                    
-            return data
-        
-        def count_matrix(matrix: list[list[str]]) -> list[list[str]]: 
-            matrix, data = self.transpose_matrix(matrix=matrix), ini_data(matrix=matrix)
-            #op = operator.lt if mode == 'min' else operator.gt
-            '''Mirar los labels actuales de interacciones
-                para cada interacción tener una lista en la que en cada celta tendremos inf
-                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
-            
-            for line in matrix[1:]:
-                for index in range(1, len(line)):
-                    residue = matrix[0][index].split('-')[0]
-                    cell = line[index]
-                    sections = cell.split(DIFF_DELIM)
-                    for section in sections:
-                        if not section.split(' ')[0] in EMPTY_CELL:
-                            interaction = int(section.split(' ')[0]) - 1
-                            if np.isnan(data[residue][interaction]):
-                                data[residue][interaction] = 1
-                            else:
-                                data[residue][interaction] += 1
-            return data
-        
-        def percent_matrix(matrix: list[list[str]]) -> list[list[str]]: 
-            matrix, data = self.transpose_matrix(matrix=matrix), ini_data(matrix=matrix)
-            #op = operator.lt if mode == 'min' else operator.gt
-            '''Mirar los labels actuales de interacciones
-                para cada interacción tener una lista en la que en cada celta tendremos inf
-                para un aa concreto, si la actividad de este es menor se guarda su actividad'''
-            
-            for line in matrix[1:]:
-                for index in range(1, len(line)):
-                    residue = matrix[0][index].split('-')[0]
-                    cell = line[index]
-                    sections = cell.split(DIFF_DELIM)
-                    for section in sections:
-                        if not section.split(' ')[0] in EMPTY_CELL:
-                            interaction = int(section.split(' ')[0]) - 1
-                            if np.isnan(data[residue][interaction]):
-                                data[residue][interaction] = 1
-                            else:
-                                data[residue][interaction] += 1
+            Returns:
+                None: Displays the heatmap or saves it to a file.
+            """
+            df = pd.DataFrame(data, index=self.interaction_labels)
+            max_cols = self.heat_max_cols  # Maximum number of columns per heatmap
+            num_cols = len(df.columns)
 
-            for key, value in data.items():
-                for index, cell in enumerate(value):
-                    data[key][index] = cell/(len(matrix)-1)*100
-                    
-            return data
-    
-        self._check_variable_types(
-            variables=[matrix, title, x_label, y_label, mode, min_v, max_v, save], 
-            expected_types=[list, str, str, str, str, (int, None.__class__), (int, None.__class__), bool], 
-            variable_names=['matrix', 'title', 'x_label', 'y_label', 'mode', 'min_v', 'max_v', 'save']
-        )
+            vmin = min_v if min_v else df.min().min()
+            vmax = max_v if max_v else df.max().max()
 
-        if self._get_residues_axis == 'columns':
-            matrix = self.transpose_matrix(matrix=matrix)
+            num_heatmaps = (num_cols + max_cols - 1) // max_cols  # Round up
+            cols_per_heatmap = (num_cols + num_heatmaps - 1) // num_heatmaps  # Distribute evenly
 
-        if mode == 'min' or mode == 'max':
-            data = min_max_matrix(matrix=matrix, mode=mode)
-        elif mode == 'mean':
-            data = mean_matrix(matrix=matrix)
-        elif mode == 'count':
-            data = count_matrix(matrix=matrix)
-        elif mode == 'percent':
-            data = percent_matrix(matrix=matrix)
-        else:
+            for i in range(num_heatmaps):
+                start_col = i * cols_per_heatmap
+                end_col = min((i + 1) * cols_per_heatmap, num_cols)
+                df_subset = df.iloc[:, start_col:end_col]
+
+                plt.figure(figsize=(14, 9))
+                sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax)
+
+                if num_heatmaps == 1:
+                    plt.title(f"{title}")
+                else:
+                    plt.title(f"{title} (Columns {start_col + 1}-{end_col})")
+
+                plt.xlabel(x_label)
+                plt.ylabel(y_label)
+                plt.subplots_adjust(left=0.145, bottom=0.155, right=1, top=0.935)
+
+                if not save:
+                    plt.show()
+                else:
+                    filename = os.path.join(self.saving_directory, f"{title}_part_{i + 1}.png")
+                    plt.savefig(filename)
+                    plt.close()
+
+        # Validate and prepare the matrix
+        matrix = validate_and_prepare_matrix(matrix=matrix)
+
+        # Ensure the mode is valid
+        if mode not in HEATMAP_MODES:
             raise InvalidModeException(mode=mode, expected_values=HEATMAP_MODES)
 
-        df = pd.DataFrame(data, index=self.interaction_labels)
-        max_cols = self.heat_max_cols  # Máximo número de columnas por heatmap
-        num_cols = len(df.columns)
+        # Process the matrix based on the mode
+        data = process_matrix(matrix=matrix, mode=mode)
 
-        # Calcular el rango global de valores
-        vmin = min_v if min_v else df.min().min()
-        vmax = max_v if max_v else df.max().max()
-
-        # Calcular cuántos heatmaps necesitamos
-        num_heatmaps = (num_cols + max_cols - 1) // max_cols  # Redondeo hacia arriba
-        cols_per_heatmap = (num_cols + num_heatmaps - 1) // num_heatmaps  # Distribución equitativa
-
-        for i in range(num_heatmaps):
-            # Rango de columnas para este heatmap
-            start_col = i * cols_per_heatmap
-            end_col = min((i + 1) * cols_per_heatmap, num_cols)  # Limitar al rango de columnas existentes
-            df_subset = df.iloc[:, start_col:end_col]
-
-            # Configurar el tamaño de la figura
-            plt.figure(figsize=(14, 9))
-
-            # Crear el heatmap
-            sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax)
-
-            # Título para el heatmap con el rango de columnas
-            plt.title(f"{title} (Columns {start_col + 1}-{end_col})")
-
-            # Etiquetas de los ejes
-            plt.xlabel(x_label)
-            plt.ylabel(y_label)
-
-            # Ajustar diseño
-            plt.tight_layout()
-
-            # Mostrar o guardar el gráfico
-            if not save:
-                plt.show()
-            else:
-                # Guardar con un nombre único
-                filename = os.path.join(self.saving_directory, f"{title}_part_{i + 1}.png")
-                plt.savefig(filename)
-                plt.close()
+        # Generate and display/save the heatmap
+        plot_heatmap(self=self, data=data, title=title, x_label=x_label, y_label=y_label, mode=mode, min_v=min_v, max_v=max_v, save=save)
 
     def plot_matrix(self,
         matrix: list[list[str]],
