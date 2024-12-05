@@ -654,7 +654,7 @@ class AnalyzeInteractions:
             ]
             for inter in inter_set:
                 if inter["type"] in ARPEGGIO_TYPE:
-                    contact = inter["type"]
+                    contact = [inter["type"]]
                 else:
                     contact = [conta for conta in inter["contact"] if conta in ARPEGGIO_CONT]
                 prot, lig = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
@@ -713,6 +713,7 @@ class AnalyzeInteractions:
         # Analyze each file in the directory
         for index, file in enumerate(files):
             file_path = os.path.join(directory, file)
+
             if os.path.isfile(file_path) and validate_file(file):
                 content = read_file(file_path)
                 if predictor == 'ichem':
