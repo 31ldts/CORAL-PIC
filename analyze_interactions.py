@@ -78,8 +78,7 @@ AMINO_ACID_CODES = [
 
 is_not_empty_or_dash = lambda cell: not (cell == EMPTY_DASH_CELL or cell == EMPTY_CELL)
 
-
-saving_directory = os.getcwd()
+#saving_directory = os.getcwd()
 
 class AnalyzeInteractions:
 
@@ -738,7 +737,7 @@ class AnalyzeInteractions:
             matrix = adjust_subunits(matrix=matrix)
         matrix = sort_interactions(matrix=matrix)
         matrix = label_matrix(matrix=matrix, rows=list(aa.keys()), columns=ligands, activity_file=activity_file, correction=files)
-
+        matrix = self.sort_matrix(matrix=matrix, residue_chain=True)
         # Save the matrix if specified
         if save:
             self.save_matrix(matrix=matrix, filename=save)
@@ -1258,7 +1257,8 @@ class AnalyzeInteractions:
         stacked: bool = False,
         save: bool = False,
         show_pie_chart: bool = False,
-        colors: list[str] = None
+        colors: list[str] = None,
+        magnitude: bool = False
     ) -> None:
         """
         Plots a bar chart or pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
@@ -1326,7 +1326,10 @@ class AnalyzeInteractions:
                     cell = matrix[row][column]
                     interactions = get_interactions(cell)
                     for i in range(len(self.interaction_labels)):
-                        reactives[row][i] += interactions[i]
+                        if magnitude:
+                            reactives[row][i] += interactions[i]
+                        elif interactions[i] > 0:
+                            reactives[row][i] += 1
 
             result_list = list(reactives.values())
             return result_list, indices
