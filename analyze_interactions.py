@@ -27,8 +27,8 @@ COLORS = [
     "#9467bd", "#8c564b"
 ]
 
-# List of predictors
-PREDICTOR_MODES = [
+# List of modes
+PROGRAM_MODES = [
     "ichem", "arpeggio"
 ]
 
@@ -303,7 +303,7 @@ class AnalyzeInteractions:
                 self.interaction_labels = ARPEGGIO_CONT + ARPEGGIO_TYPE  # Default interaction labels
                 self.plot_colors = ARPEGGIO_COLORS  # Default color c
             else:
-                raise InvalidModeException(mode=mode, expected_values=PREDICTOR_MODES)
+                raise InvalidModeException(mode=mode, expected_values=PROGRAM_MODES)
         if plot_max_cols:
             self.plot_max_cols = plot_max_cols
         if heat_max_cols:
@@ -317,7 +317,7 @@ class AnalyzeInteractions:
 
     def analyze_files(self, 
         directory: str, 
-        predictor: str, 
+        mode: str, 
         activity_file: str = None, 
         protein: bool = True, 
         ligand: bool = True, 
@@ -330,7 +330,7 @@ class AnalyzeInteractions:
 
         Args:
             directory (str): Path to the directory containing interaction data files.
-            predictor (str): Label to differentiate predictors' files.
+            mode (str): Label to differentiate modes' files.
             activity_file (str, optional): Path to the activity file (CSV) for labeling data.
             protein (bool, optional): Include protein atoms in the analysis if True.
             ligand (bool, optional): Include ligand atoms in the analysis if True.
@@ -689,19 +689,19 @@ class AnalyzeInteractions:
         
         # Validate input types
         self._check_variable_types(
-            variables=[directory, predictor, activity_file, protein, ligand, subunit, save],
+            variables=[directory, mode, activity_file, protein, ligand, subunit, save],
             expected_types=[str, str, (str, None.__class__), bool, bool, bool, (str, None.__class__)],
-            variable_names=['directory', 'predictor', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
+            variable_names=['directory', 'mode', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
         )
 
         # Check the directory and return its files
         files = check_directory(directory=directory)
         
-        # Check if the predictor is registered
-        if predictor not in PREDICTOR_MODES:
-            raise InvalidModeException(mode=predictor, expected_values=PREDICTOR_MODES)
+        # Check if the mode is registered
+        if mode not in PROGRAM_MODES:
+            raise InvalidModeException(mode=mode, expected_values=PROGRAM_MODES)
         else:
-            self.set_config(mode=predictor)
+            self.set_config(mode=mode)
 
         ligands = [None] * len(files)
         matrix = []
@@ -716,20 +716,20 @@ class AnalyzeInteractions:
 
             if os.path.isfile(file_path) and validate_file(file):
                 content = read_file(file_path)
-                if predictor == 'ichem':
+                if mode == 'ichem':
                     matrix, aa, cont, subunits_set = ichem_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
-                elif predictor == 'arpeggio':
+                elif mode == 'arpeggio':
                     matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
                 else:
                     raise Exception
             else:
                 failed_files.append(file_path)
-            if predictor == 'ichem':
+            if mode == 'ichem':
                 ligands[index] = file.replace(".txt", "")
-            elif predictor == 'arpeggio':
+            elif mode == 'arpeggio':
                 files[index] = file.replace(".json", "")
                 ligands[index] = ligand_code
-        if predictor == 'ichem':
+        if mode == 'ichem':
             files = None       
                 
         if len(failed_files) > 0:
@@ -1260,7 +1260,7 @@ class AnalyzeInteractions:
         save: bool = False,
         show_pie_chart: bool = False,
         colors: list[str] = None,
-        magnitude: bool = False
+        type_count: bool = False
     ) -> None:
         """
         Plots a bar chart or pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
@@ -1328,7 +1328,7 @@ class AnalyzeInteractions:
                     cell = matrix[row][column]
                     interactions = get_interactions(cell)
                     for i in range(len(self.interaction_labels)):
-                        if magnitude:
+                        if type_count:
                             reactives[row][i] += interactions[i]
                         elif interactions[i] > 0:
                             reactives[row][i] += 1
@@ -1856,7 +1856,7 @@ class InvalidAxisException(Exception):
         super().__init__(self.message)
 
 class InvalidFilenameException(Exception):
-    """Exception raised for invalid predictor values."""
+    """Exception raised for invalid mode values."""
     def __init__(self, filenames):
         self.filenames = filenames
         output = ""
@@ -1866,13 +1866,13 @@ class InvalidFilenameException(Exception):
         super().__init__(self.message)
 
 class HeatmapActivityException(Exception):
-    """Exception raised for invalid predictor values."""
+    """Exception raised for invalid mode values."""
     def __init__(self):
         self.message = "Heatmap modes' max, min and mean require ligand/complex activities."
         super().__init__(self.message)
 
 class InvalidModeException(Exception):
-    """Exception raised for invalid predictor values."""
+    """Exception raised for invalid mode values."""
     def __init__(self, mode, expected_values):
         self.message = f"Invalid mode value: '{mode}'. Expected:{expected_values}"
         super().__init__(self.message)
