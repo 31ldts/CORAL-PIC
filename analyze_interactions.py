@@ -596,8 +596,10 @@ class AnalyzeInteractions:
                     return end, begin
             elif begin["label_comp_type"] == "P":
                 return begin, end
-            else:
+            elif end["label_comp_type"] == "P":
                 return end, begin
+            else: 
+                return None, None
 
         def validate_file(filename):
             return True if filename.count(' ') == 0 else False
@@ -656,7 +658,7 @@ class AnalyzeInteractions:
                 else:
                     contact = [conta for conta in inter["contact"] if conta in ARPEGGIO_CONT]
                 prot, lig = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
-                if prot:
+                if prot is not None:
                     residue = prot["label_comp_id"] + " " + str(prot["auth_seq_id"])
                     prot_atom = prot["auth_atom_id"]
                     prot_subunit = prot["auth_asym_id"]
@@ -682,8 +684,7 @@ class AnalyzeInteractions:
 
                     for interaction in contact:
                         matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
-                else:
-                    print("Cannot determine which is the protein section (" + inter + ")")
+
             return matrix, ligand_code, aa, cont, subunits_set
         
         # Validate input types
