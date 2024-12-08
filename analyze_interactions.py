@@ -85,6 +85,7 @@ class AnalyzeInteractions:
     def __init__(self):
         """Initializes the class with the current working directory and default settings."""
         self.saving_directory = os.getcwd()  # Set the default saving directory
+        self.input_directory = os.getcwd()  # Set the default input directory
         self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
         self.codes = True
         self.plot_colors = COLORS  # Default color configuration
@@ -189,7 +190,8 @@ class AnalyzeInteractions:
 
     def change_directory(
             self, 
-            path: str
+            path: str,
+            mode: str
             ) -> None:
         """
         Changes the saving directory to a specified subdirectory within the project.
@@ -205,9 +207,9 @@ class AnalyzeInteractions:
         """
         
         self._check_variable_types(
-            variables=[path],
-            expected_types=[str],
-            variable_names=['path']
+            variables=[path, mode],
+            expected_types=[str, str],
+            variable_names=['path', 'mode']
         )
 
         # Construct the new path
@@ -217,8 +219,12 @@ class AnalyzeInteractions:
         if not os.path.exists(new_path):
             raise ValueError("The specified directory must exist inside the project.")
 
-        # Update the saving directory
-        self.saving_directory = new_path
+        if mode == 'input':
+            self.input_directory = new_path
+        elif mode == 'output':
+            self.saving_directory = new_path
+        else:
+            raise InvalidModeException(mode=mode, expected_values=['input', 'output'])
 
     def set_config(
             self, 
@@ -265,6 +271,7 @@ class AnalyzeInteractions:
                 None
             """
             self.saving_directory = os.getcwd()  # Set the default saving directory
+            self.input_directory = os.getcwd()  # Set the default input directory
             self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
             self.codes = True
             self.plot_colors = COLORS  # Default color configuration
@@ -694,6 +701,10 @@ class AnalyzeInteractions:
             variable_names=['directory', 'mode', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
         )
 
+        directory = os.path.join(self.input_directory, directory)
+        if activity_file is not None:
+            activity_file = os.path.join(self.input_directory, activity_file)
+
         # Check the directory and return its files
         files = check_directory(directory=directory)
         
@@ -1032,6 +1043,9 @@ class AnalyzeInteractions:
             expected_types=[list, (str, None.__class__), (list, None.__class__), (str, None.__class__), (str, None.__class__)],
             variable_names=['matrix', 'chain', 'subpockets', 'subpocket_path', 'save']
         )
+
+        if subpocket_path is not None:
+            subpocket_path = os.path.join(self.input_directory, subpocket_path)
 
         # Validate the dimensions of the matrix
         self._verify_dimensions(matrix=matrix)
