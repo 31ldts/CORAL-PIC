@@ -184,6 +184,81 @@ class AnalyzeInteractions:
         if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
             raise ValueError("The matrix must have at least 2 rows and 2 columns.")
 
+    def _get_interactions(self, cell: str) -> list[int]:
+        """
+        Extracts and counts interactions from a cell string.
+
+        Args:
+            cell (str): The cell string containing interaction data.
+
+        Returns:
+            list: A list of interaction counts for each interaction type.
+        """
+        interactions = [0] * len(self.interaction_labels)
+        sections = cell.split(GROUP_DELIM)
+        for index in range(1, len(sections), 2):
+            interaction = int(sections[index - 1].replace(DIFF_DELIM, "").replace(" ", ""))
+            interactions[interaction - 1] += len(sections[index].split(SAME_DELIM))
+        return interactions
+
+    def _stack_reactives(self, 
+                         matrix: list[list[str]], 
+                         axis: str, 
+                         type_count: bool) -> tuple[list[list[int]], list[str]]:
+        """
+        Accumulates interaction counts for rows or columns and returns the stacked data.
+
+        Args:
+            matrix (list of lists): The matrix containing interaction data.
+            axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+            type_count (bool): Whether to count types or instances.
+
+        Returns:
+            tuple: A tuple containing the stacked data and indices.
+        """
+        self._verify_dimensions(matrix=matrix)
+        if axis == 'columns':
+            matrix = self.transpose_matrix(matrix)
+
+        reactives = {row: [0] * len(self.interaction_labels) for row in range(1, len(matrix))}
+        indices = [matrix[row][0].split('_')[0].strip() for row in range(1, len(matrix))]
+
+        for row in range(1, len(matrix)):
+            for column in range(1, len(matrix[row])):
+                cell = matrix[row][column]
+                interactions = self._get_interactions(cell)
+                for i in range(len(self.interaction_labels)):
+                    if type_count:
+                        reactives[row][i] += interactions[i]
+                    elif interactions[i] > 0:
+                        reactives[row][i] += 1
+
+        result_list = list(reactives.values())
+        return result_list, indices
+
+    def _plot_init(self, colors, matrix, axis, type_count):
+        if colors is None:
+            colors = self.plot_colors
+
+        # Ensure the number of colors matches the number of interaction labels
+        if len(colors) < len(self.interaction_labels):
+            raise ValueError(f"Not enough colors provided. Expected at least {len(self.interaction_labels)} colors, but got {len(colors)}.")
+
+        # Calculate stacked data if necessary
+        data, indices = self._stack_reactives(matrix=matrix,
+                                              axis=axis,
+                                              type_count=type_count)
+        transposed_data = self.transpose_matrix(data)
+        return colors, data, indices, transposed_data
+
+    def _plot_end(self, save, plt, fig, plot_name):
+        # Show or save the plot
+        if not save:
+            plt.show()
+        else:
+            plt.savefig(os.path.join(self.saving_directory, plot_name + '.png'))
+            plt.close(fig)  # Close the figure after saving to avoid display overlap
+
     #################################
     # Public Methods: Configuration #
     #################################
@@ -1263,7 +1338,7 @@ class AnalyzeInteractions:
         # Generate and display/save the heatmap
         plot_heatmap(self=self, data=data, title=title, x_label=x_label, y_label=y_label, mode=mode, min_v=min_v, max_v=max_v, save=save)
 
-    def plot_matrix(self,
+    def bar_chart(self,
         matrix: list[list[str]],
         plot_name: str,
         axis: str,
@@ -1272,7 +1347,6 @@ class AnalyzeInteractions:
         title: str = "Protein-drug interactions",
         stacked: bool = False,
         save: bool = False,
-        show_pie_chart: bool = False,
         colors: list[str] = None,
         type_count: bool = False
     ) -> None:
@@ -1295,238 +1369,235 @@ class AnalyzeInteractions:
             None
         """
 
-        if colors is None:
-            colors = self.plot_colors
+        # Initialize and get data
+        colors, data, indices, transposed_data = self._plot_init(colors, matrix, axis, type_count)
+        max_elements_plot = self.plot_max_cols
+        num_x_elements = len(indices)
 
-        # Ensure the number of colors matches the number of interaction labels
-        if len(colors) < len(self.interaction_labels):
-            raise ValueError(f"Not enough colors provided. Expected at least {len(self.interaction_labels)} colors, but got {len(colors)}.")
+        # Divide data into multiple plots if necessary
+        if num_x_elements > max_elements_plot:
+            # Calculate the number of plots needed
+            num_plots = (num_x_elements + max_elements_plot - 1) // max_elements_plot  # Ceiling division
 
-        def get_interactions(cell: str) -> list:
-            """
-            Extracts and counts interactions from a cell string.
+            # Calculate the number of elements per plot, ensuring equal distribution
+            elements_per_plot = num_x_elements // num_plots
+            remainder = num_x_elements % num_plots
 
-            Args:
-                cell (str): The cell string containing interaction data.
+            # Split indices into equally distributed groups
+            split_indices = []
+            start = 0
+            for i in range(num_plots):
+                # Distribute the remainder among the first few plots
+                end = start + elements_per_plot + (1 if i < remainder else 0)
+                split_indices.append((start, end))
+                start = end
 
-            Returns:
-                list: A list of interaction counts for each interaction type.
-            """
-            interactions = [0] * len(self.interaction_labels)
-            sections = cell.split(GROUP_DELIM)
-            for index in range(1, len(sections), 2):
-                interaction = int(sections[index - 1].replace(DIFF_DELIM, "").replace(" ", ""))
-                interactions[interaction - 1] += len(sections[index].split(SAME_DELIM))
-            return interactions
+            # Ensure all plots have the same Y-axis limit
+            max_y_values = []
+            split_data = []
 
-        def stack_reactives(matrix: list, axis: str) -> tuple[list, list]:
-            """
-            Accumulates interaction counts for rows or columns and returns the stacked data.
+            for start, end in split_indices:
+                if stacked:
+                    # Safely slice transposed_data based on start and end
+                    split_group = [group[start:end] for group in transposed_data]
+                    split_data.append(split_group)
+                    max_y_values.append(max(sum(col) for col in zip(*split_group)))
+                else:
+                    # Safely slice data based on start and end
+                    split_data.append((data[0][start:end], data[1][start:end]))
+                    max_y_values.append(max(split_data[-1][1]))
 
-            Args:
-                matrix (list of lists): The matrix containing interaction data.
-                axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+            global_max_y = max(max_y_values)
 
-            Returns:
-                tuple: A tuple containing the stacked data and indices.
-            """
-            self._verify_dimensions(matrix=matrix)
-            if axis == 'columns':
-                matrix = self.transpose_matrix(matrix)
-            
-            reactives = {row: [0] * len(self.interaction_labels) for row in range(1, len(matrix))}
-            indices = [matrix[row][0].split('_')[0].strip() for row in range(1, len(matrix))]
-            
-            for row in range(1, len(matrix)):
-                for column in range(1, len(matrix[row])):
-                    cell = matrix[row][column]
-                    interactions = get_interactions(cell)
-                    for i in range(len(self.interaction_labels)):
-                        if type_count:
-                            reactives[row][i] += interactions[i]
-                        elif interactions[i] > 0:
-                            reactives[row][i] += 1
+            # Generate separate plots for each split group
+            for i, (start, end) in enumerate(split_indices):
+                fig, ax = plt.subplots(num=f"{plot_name}_{i+1}", figsize=(12, 6))
+                subset_indices = indices[start:end]  # Subset of indices for the current plot
 
-            result_list = list(reactives.values())
-            return result_list, indices
-
-        # Calculate stacked data if necessary
-        data, indices = stack_reactives(matrix=matrix, axis=axis)
-        transposed_data = self.transpose_matrix(data)
-
-        # Plot pie chart if requested
-        if show_pie_chart:
-            # Sum up the total interactions for each type
-            total_interactions = [sum(transposed_data[i]) for i in range(len(transposed_data))]
-
-            # Filter out interactions with zero counts
-            non_zero_interactions = [(label, total, colors[i]) for i, (label, total) in enumerate(zip(self.interaction_labels, total_interactions)) if total > 0]
-
-            # Prepare pie chart data
-            if non_zero_interactions:
-                labels_pie, sizes, pie_colors = zip(*non_zero_interactions)
-            else:
-                labels_pie, sizes, pie_colors = [], [], []
-
-            fig, ax_pie = plt.subplots(figsize=(10, 6))
-
-            # Plotting the pie chart without labels around it
-            wedges, texts, autotexts = ax_pie.pie(sizes, labels=None, colors=pie_colors, autopct='', startangle=140)
-
-            # Set the title of the pie chart
-            ax_pie.set_title('Interaction Percentages')
-
-            total = 0
-            for interaction in sizes:
-                total += interaction
-
-            # Adding a legend with all possible interaction labels, regardless of their values
-            labels = [label + " (" + str(round(count/total*100, 2)) +"%)" for label, count in zip(self.interaction_labels, total_interactions) if count != 0]
-            ax_pie.legend(labels, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
-
-        else:
-            # Create a new figure for the bar chart
-            max_elements_per_plot = self.plot_max_cols
-            num_x_elements = len(indices)
-
-            # Divide data into multiple plots if necessary
-            if num_x_elements > max_elements_per_plot:
-                # Calculate the number of plots needed
-                num_plots = (num_x_elements + max_elements_per_plot - 1) // max_elements_per_plot  # Ceiling division
-
-                # Calculate the number of elements per plot, ensuring equal distribution
-                elements_per_plot = num_x_elements // num_plots
-                remainder = num_x_elements % num_plots
-
-                # Split indices into equally distributed groups
-                split_indices = []
-                start = 0
-                for i in range(num_plots):
-                    # Distribute the remainder among the first few plots
-                    end = start + elements_per_plot + (1 if i < remainder else 0)
-                    split_indices.append((start, end))
-                    start = end
-
-                # Ensure all plots have the same Y-axis limit
-                max_y_values = []
-                split_data = []
-
-                for start, end in split_indices:
-                    if stacked:
-                        # Safely slice transposed_data based on start and end
-                        split_group = [group[start:end] for group in transposed_data]
-                        split_data.append(split_group)
-                        max_y_values.append(max(sum(col) for col in zip(*split_group)))
-                    else:
-                        # Safely slice data based on start and end
-                        split_data.append((data[0][start:end], data[1][start:end]))
-                        max_y_values.append(max(split_data[-1][1]))
-
-                global_max_y = max(max_y_values)
-
-                # Generate separate plots for each split group
-                for i, (start, end) in enumerate(split_indices):
-                    fig, ax = plt.subplots(num=f"{plot_name}_{i+1}", figsize=(12, 6))
-                    subset_indices = indices[start:end]  # Subset of indices for the current plot
-
-                    if stacked:
-                        bars = []
-                        bottoms = [0] * (end - start)
-                        for index, group in enumerate(transposed_data):
-                            group_subset = group[start:end]  # Subset of the group for the current plot
-                            bar = ax.bar(subset_indices, group_subset, bottom=bottoms, label=self.interaction_labels[index], color=colors[index])
-                            bars.append(bar)
-                            bottoms = [b + g for b, g in zip(bottoms, group_subset)]
-
-                        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
-
-                        # Add interactive cursors to display percentages for stacked bars
-                        cursor = mplcursors.cursor(bars, hover=True)
-
-                        @cursor.connect("add")
-                        def on_add(sel):
-                            # Get the index of the bar in the current figure
-                            bar_index = sel.index
-                            # Translate the index to the original dataset's range
-                            original_index = start + bar_index
-                            # Calculate totals and percentages
-                            total = sum(transposed_data[j][original_index] for j in range(len(transposed_data)))
-                            percentages = [
-                                transposed_data[j][original_index] / total * 100 if total != 0 else 0
-                                for j in range(len(transposed_data))
-                            ]
-                            # Create annotation text
-                            annotation_text = "\n".join(
-                                [f"{self.interaction_labels[j]}: {percentages[j]:.1f}%" for j in range(len(self.interaction_labels))]
-                            )
-                            sel.annotation.set_text(annotation_text)
-                            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
-                    else:
-                        x_data = data[0][start:end]
-                        y_data = data[1][start:end]
-                        ax.bar(x_data, y_data, color=colors[0] if len(colors) > 0 else None)
-
-                    ax.set_ylim(0, global_max_y * 1.1)  # Same Y-axis limit for consistency
-                    ax.set_xticks(range(len(subset_indices)))
-                    ax.set_xticklabels(subset_indices, rotation=90, ha='center')
-                    ax.set_ylabel(label_y)
-                    ax.set_xlabel(label_x or "Interacting protein residues")
-                    ax.set_title(f"{title} (Part {i+1})")
-                    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-                    plt.tight_layout()
-
-                    if save:
-                        plt.savefig(os.path.join(self.saving_directory, f"{plot_name}_part_{i+1}.png"))
-                        plt.close(fig)
-                    else:
-                        plt.show()
-
-
-            else:
-                # Original plotting logic if data fits in one plot
-                fig, ax = plt.subplots(num=plot_name, figsize=(12, 6))
                 if stacked:
                     bars = []
-                    bottoms = [0] * len(indices)
+                    bottoms = [0] * (end - start)
                     for index, group in enumerate(transposed_data):
-                        bars.append(ax.bar(indices, group, bottom=bottoms, label=self.interaction_labels[index], color=colors[index]))
-                        bottoms = [i + j for i, j in zip(bottoms, group)]
+                        group_subset = group[start:end]  # Subset of the group for the current plot
+                        bar = ax.bar(subset_indices, group_subset, bottom=bottoms, label=self.interaction_labels[index], color=colors[index])
+                        bars.append(bar)
+                        bottoms = [b + g for b, g in zip(bottoms, group_subset)]
 
                     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
-                    max_y = max([sum(col) for col in data])
-                else:
-                    data = self.sort_matrix(matrix, axis, count=True)
-                    ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
-                    max_y = max(data[1])
 
-                ax.set_ylim(0, max_y * 1.1)
-                ax.set_xticks(range(len(indices)))
-                ax.set_xticklabels(indices, rotation=90, ha='center')
+                    # Add interactive cursors to display percentages for stacked bars
+                    cursor = mplcursors.cursor(bars, hover=True)
+
+                    @cursor.connect("add")
+                    def on_add(sel):
+                        # Get the index of the bar in the current figure
+                        bar_index = sel.index
+                        # Translate the index to the original dataset's range
+                        original_index = start + bar_index
+                        # Calculate totals and percentages
+                        total = sum(transposed_data[j][original_index] for j in range(len(transposed_data)))
+                        percentages = [
+                            transposed_data[j][original_index] / total * 100 if total != 0 else 0
+                            for j in range(len(transposed_data))
+                        ]
+                        # Create annotation text
+                        annotation_text = "\n".join(
+                            [f"{self.interaction_labels[j]}: {percentages[j]:.1f}%" for j in range(len(self.interaction_labels))]
+                        )
+                        sel.annotation.set_text(annotation_text)
+                        sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
+                else:
+                    x_data = data[0][start:end]
+                    y_data = data[1][start:end]
+                    ax.bar(x_data, y_data, color=colors[0] if len(colors) > 0 else None)
+
+                ax.set_ylim(0, global_max_y * 1.1)  # Same Y-axis limit for consistency
+                ax.set_xticks(range(len(subset_indices)))
+                ax.set_xticklabels(subset_indices, rotation=90, ha='center')
                 ax.set_ylabel(label_y)
                 ax.set_xlabel(label_x or "Interacting protein residues")
-                ax.set_title(title)
+                ax.set_title(f"{title} (Part {i+1})")
                 ax.yaxis.set_major_locator(MaxNLocator(integer=True))
                 plt.tight_layout()
 
-            # Add interactive cursors to display percentages for stacked bars
-            if stacked:
-                cursor = mplcursors.cursor(bars, hover=True)
+                self._plot_end(save, plt, fig, f"{plot_name}_part_{i+1}")
 
-                @cursor.connect("add")
-                def on_add(sel):
-                    index = sel.index
-                    total = sum(transposed_data[i][index] for i in range(len(transposed_data)))
-                    percentages = [transposed_data[i][index] / total * 100 if total != 0 else 0 for i in range(len(transposed_data))]
-                    annotation_text = "\n".join([f"{self.interaction_labels[i]}: {percentages[i]:.1f}%" for i in range(len(self.interaction_labels))])
-                    sel.annotation.set_text(annotation_text)
-                    sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
+        else:
+            # Original plotting logic if data fits in one plot
+            fig, ax = plt.subplots(num=plot_name, figsize=(12, 6))
+            if stacked:
+                bars = []
+                bottoms = [0] * len(indices)
+                for index, group in enumerate(transposed_data):
+                    bars.append(ax.bar(indices, group, bottom=bottoms, label=self.interaction_labels[index], color=colors[index]))
+                    bottoms = [i + j for i, j in zip(bottoms, group)]
+
+                ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
+                max_y = max([sum(col) for col in data])
+            else:
+                data = self.sort_matrix(matrix, axis, count=True)
+                ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
+                max_y = max(data[1])
+
+            ax.set_ylim(0, max_y * 1.1)
+            ax.set_xticks(range(len(indices)))
+            ax.set_xticklabels(indices, rotation=90, ha='center')
+            ax.set_ylabel(label_y)
+            ax.set_xlabel(label_x or "Interacting protein residues")
+            ax.set_title(title)
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+            plt.tight_layout()
+
+        # Add interactive cursors to display percentages for stacked bars
+        if stacked:
+            cursor = mplcursors.cursor(bars, hover=True)
+
+            @cursor.connect("add")
+            def on_add(sel):
+                index = sel.index
+                total = sum(transposed_data[i][index] for i in range(len(transposed_data)))
+                percentages = [transposed_data[i][index] / total * 100 if total != 0 else 0 for i in range(len(transposed_data))]
+                annotation_text = "\n".join([f"{self.interaction_labels[i]}: {percentages[i]:.1f}%" for i in range(len(self.interaction_labels))])
+                sel.annotation.set_text(annotation_text)
+                sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)  # Set background to white with 90% opacity
+
+        self._plot_end(save, plt, fig, plot_name)
+
+    def pie_chart(self,
+        matrix: list[list[str]],
+        plot_name: str,
+        axis: str,
+        save: bool = False,
+        colors: list[str] = None,
+        type_count: bool = False
+    ) -> None:
+        """
+        Plots a pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
+
+        Args:
+            matrix (list of lists): The matrix containing interaction data.
+            plot_name (str): The name of the plot to be saved (without extension).
+            axis (str): Specifies whether to select rows ('rows') or columns ('columns').
+            save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
+            colors (list, optional): List of colors to use for each interaction type. Defaults to None.
+            type_count (bool, optional): If True, counts types of interactions. Defaults to False.
+
+        Returns:
+            None
+        """
+
+        def _filter_non_zero_interactions(total_interactions: list[int], colors: list[str]) -> list[tuple]:
+            """
+            Filters out interaction types with zero total count.
+
+            Args:
+                total_interactions (list[int]): Total interactions per type.
+                colors (list[str]): List of colors for each interaction type.
+
+            Returns:
+                list[tuple]: Filtered interaction data as (label, total, color).
+            """
+            return[(label, total, colors[i])
+                for i, (label, total) in enumerate(zip(self.interaction_labels, total_interactions))
+                if total > 0]
+
+        def _plot_pie_chart(labels: list[str], sizes: list[int], colors: list[str], total_interactions: list[int]) -> None:
+            """
+            Creates and formats a pie chart.
+
+            Args:
+                labels (list[str]): Interaction labels for the pie chart.
+                sizes (list[int]): Interaction sizes (counts or percentages).
+                colors (list[str]): Colors for each interaction type.
+                total_interactions (list[int]): Total counts of interactions per type.
+
+            Returns:
+                None
+            """
+            fig, ax_pie = plt.subplots(figsize=(10, 6))
+
+            # Plot the pie chart
+            ax_pie.pie(sizes, labels=None, colors=colors, autopct='', startangle=140)
+            ax_pie.set_title('Interaction Percentages')
+
+            # Calculate percentages and create legend
+            total = sum(total_interactions)
+            legend_labels = [
+                f"{label} ({round(count / total * 100, 2)}%)"
+                for label, count in zip(self.interaction_labels, total_interactions)
+                if count != 0
+            ]
+            ax_pie.legend(legend_labels, title="Interaction Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+
+            return fig
+
+        def _prepare_pie_chart_data(non_zero_interactions: list[tuple]) -> tuple:
+            """
+            Prepares data for plotting the pie chart.
+
+            Args:
+                non_zero_interactions (list[tuple]): Interaction data with non-zero totals.
+
+            Returns:
+                tuple: Labels, sizes, and colors for the pie chart.
+            """
+            if non_zero_interactions:
+                return zip(*non_zero_interactions)  # Separates into labels, sizes, and colors
+            return [], [], []
+        
+        # Initialize plotting parameters and data
+        colors, data, indices, transposed_data = self._plot_init(colors, matrix, axis, type_count)
+
+        # Calculate total interaction and prepade data for plotting
+        total_interactions = [sum(transposed_data[i]) for i in range(len(transposed_data))]
+        non_zero_interactions = _filter_non_zero_interactions(total_interactions, colors)
+        labels_pie, sizes, pie_colors = _prepare_pie_chart_data(non_zero_interactions)
+
+        # Plot the pie chart
+        fig = _plot_pie_chart(labels_pie, sizes, pie_colors, total_interactions)
 
         # Show or save the plot
-        if not save:
-            plt.show()
-        else:
-            plt.savefig(os.path.join(self.saving_directory, plot_name + '.png'))
-            plt.close(fig)  # Close the figure after saving to avoid display overlap
+        self._plot_end(save, plt, fig, plot_name)
 
     def remove_empty_axis(
             self, 
