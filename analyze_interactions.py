@@ -78,7 +78,15 @@ AMINO_ACID_CODES = [
 
 is_not_empty_or_dash = lambda cell: not (cell == EMPTY_DASH_CELL or cell == EMPTY_CELL)
 
-#saving_directory = os.getcwd()
+class InteractionData:
+    def __init__(self, colors, interactions, ligand, matrix, mode, protein, subunit):
+        self.colors = colors
+        self.interactions = interactions
+        self.ligand = ligand
+        self.matrix = matrix
+        self.mode = mode
+        self.protein = protein
+        self.subunit = subunit
 
 class AnalyzeInteractions:
 
