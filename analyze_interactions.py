@@ -1088,87 +1088,103 @@ class AnalyzeInteractions:
             InteractionData: A new InteractionData object containing the filtered matrix.
         """
 
-        def get_subpockets(subpocket_path: str, subpockets: list[str]) -> list[str]:
-
+        def extract_subpockets_from_file(subpocket_file_path: str, subpocket_list: list[str]) -> list[str]:
+            """Extract residues from the subpocket file matching specified subpockets."""
             residues = []
-            
-            with open(subpocket_path, mode='r', encoding='utf-8') as archivo_csv:
-                lector = csv.reader(archivo_csv)
-                
-                for fila in lector:
-                    if fila[0] in subpockets:
-                        elementos_segunda_columna = fila[1].split(', ')
-                        for elemento in elementos_segunda_columna:
-                            values = elemento.split('<')
-                            if len(values) == 2:
-                                check_chain("<" + values[1])
-                            residues.append(elemento)
-            
+            with open(subpocket_file_path, mode='r', encoding='utf-8') as csv_file:
+                reader = csv.reader(csv_file)
+                for row in reader:
+                    if row[0] in subpocket_list:
+                        second_column_items = row[1].split(', ')
+                        for item in second_column_items:
+                            split_values = item.split('<')
+                            if len(split_values) == 2:
+                                validate_chain("<" + split_values[1])  # Validate chain format
+                            residues.append(item)
             return residues
         
-        def filter_cell(fila: list[str], chain: str) -> list[str]:
-            atoms = ["C", "CA", "N", "O"]
-            atoms_expression = (lambda item: item in atoms) if chain == "<main>" else (lambda item: item not in atoms)
-            new_row = [fila[0]]
-            empty_row = True
-            for cell in fila[1:]:
+        def filter_row(row: list[str], chain_to_filter: str) -> tuple[list[str], bool]:
+            """
+            Filters a single row of the matrix based on chain criteria.
+            
+            Args:
+                row (list[str]): A row from the interaction matrix.
+                chain_to_filter (str): The chain to filter.
+
+            Returns:
+                tuple: Filtered row and a boolean indicating if the row is empty.
+            """
+            atom_types = ["C", "CA", "N", "O"]
+            atom_filter = (
+                lambda atom: atom in atom_types
+                if chain_to_filter == "<main>"
+                else atom not in atom_types
+            )
+
+            filtered_row = [row[0]]  # Keep the first column (residue)
+            row_is_empty = True
+
+            for cell in row[1:]:
                 if is_not_empty_or_dash(cell):
-                    new_cell = ""
+                    new_cell_content = ""
                     for interaction in cell.split(DIFF_DELIM):
-                        interaction_number = interaction.split(GROUP_DELIM)[0]
-                        interaction = interaction.split(GROUP_DELIM)[1]
-                        pairs = ""
-                        for pair in interaction.split(SAME_DELIM):
-                            # Hacer split - y quedarme con lo primero
-                            # Hacer split , y mirar cada uno en el momento de que se confirme
-                            # aunque no sea completo, se dejará
-                            protein = pair.split("-")[0]
-                            protein_atoms = protein.split(",")
-                            find = False
-                            for atom in protein_atoms:
-                                if atoms_expression(atom):
-                                    find = True
-                                    break
-                            if find:
-                                pairs += pair + SAME_DELIM
-                        if pairs != "":
-                            new_cell += interaction_number + GROUP_DELIM + pairs[:-2] + GROUP_DELIM + DIFF_DELIM
-                    if new_cell == "":
-                        new_cell = "-"
+                        interaction_number, interaction_pairs = interaction.split(GROUP_DELIM, 1)
+                        valid_pairs = [
+                            pair for pair in interaction_pairs.split(SAME_DELIM)
+                            if any(atom_filter(atom) for atom in pair.split("-")[0].split(","))
+                        ]
+                        if valid_pairs:
+                            new_cell_content += f"{interaction_number}{GROUP_DELIM}{SAME_DELIM.join(valid_pairs)}{DIFF_DELIM}"
+                    new_cell_content = new_cell_content[:-len(DIFF_DELIM)] if new_cell_content else "-"
+                    filtered_row.append(new_cell_content)
+                    if new_cell_content != "-":
+                        row_is_empty = False
+                else:
+                    filtered_row.append(cell)
+
+            return filtered_row, row_is_empty
+
+        def filter_matrix(matrix: list[list[str]], residues: list[str], chain: str) -> list[list[str]]:
+            """
+            Filters the interaction matrix based on residues and chain.
+
+            Args:
+                matrix (list[list[str]]): The original interaction matrix.
+                residues_to_filter (list[str]): List of residues to filter.
+                chain (str): The chain to filter.
+
+            Returns:
+                list[list[str]]: The filtered interaction matrix.
+            """
+            filtered_matrix = [matrix[0]]  # Keep the header row
+
+            # Prepare comparable dictionary for quick lookups
+            residue_chain_map = {
+                item.split("<")[0]: f"<{item.split('<')[1]}" if len(item.split("<")) == 2 else "<all>"
+                for item in residues
+            }
+
+            for row in matrix[1:]:
+                residue = row[0].replace(" ", "").split("-")[0]
+                if residue in residue_chain_map:
+                    if residue_chain_map[residue] == "<all>":
+                        filtered_matrix.append(row)
                     else:
-                        new_cell = new_cell[:-2]
-                        empty_row = False
-                    new_row.append(new_cell)
-            return new_row, empty_row
+                        filtered_row, is_empty = filter_row(row, residue_chain_map[residue])
+                        if not is_empty:
+                            filtered_matrix.append(filtered_row)
+                else:
+                    filtered_row, is_empty = filter_row(row, chain)
+                    if not is_empty:
+                        filtered_matrix.append(filtered_row)
 
-        def filtrar_lista(matrix: list[list[str]], resultado: list[str], chain: str) -> list[list[str]]:
-            # Mantener la primera fila (encabezado) siempre
-            matriz_filtrada = [matrix[0]]
+            return filtered_matrix
 
-            if len(resultado) != 0:
-                comparable = {x.split("<")[0]: "<" + x.split("<")[1] if len(x.split("<")) == 2 else "<all>" for x in resultado}
-                for fila in matrix[1:]:
-                    residue = fila[0].replace(" ", "").split("-")[0]
-                    if residue in comparable:
-                        if comparable[residue] != "<all>":
-                            fila, empty = filter_cell(fila, comparable[residue])
-                            if not empty:
-                                matriz_filtrada.append(fila)
-                        else:
-                         matriz_filtrada.append(fila)
-            else:
-                for fila in matrix[1:]:
-                    fila, empty = filter_cell(fila, chain)
-                    if not empty:
-                        matriz_filtrada.append(fila)
-
-            return matriz_filtrada
-
-        def check_chain(chain):
-            valid_chains = ["<side>", "<main>"]
+        def validate_chain(chain: str) -> None:
+            """Validates that the chain is either '<main>' or '<side>'."""
+            valid_chains = ["<main>", "<side>"]
             if chain not in valid_chains:
                 raise InvalidModeException(mode=chain, expected_values=valid_chains)
-            return True
 
         # Check types of the matrix, chain, and subpocket
         self._check_variable_types(
@@ -1184,11 +1200,11 @@ class AnalyzeInteractions:
         # Extract residues if subpockets are provided
         if subpocket_path and subpockets:
             subpocket_path = os.path.join(self.input_directory, subpocket_path)
-            residues = get_subpockets(subpocket_path=subpocket_path, subpockets=subpockets)
+            residues = extract_subpockets_from_file(subpocket_path, subpockets)
             if chain:
-                check_chain(chain=chain)
+                validate_chain(chain=chain)
                 if not filtered_data.protein:
-                    raise Exception("There are no protein atoms in the interaction data.")
+                    raise Exception("No protein atoms available in the interaction data.")
                 for residue in residues:
                     values = residue.split('<')
                     if len(values) == 2:
@@ -1199,24 +1215,25 @@ class AnalyzeInteractions:
             else:
                 residues_selection = residues
         elif chain:
-            check_chain(chain=chain)
+            validate_chain(chain=chain)
             if not filtered_data.protein:
-                raise Exception("There are no protein atoms in the interaction data.")
+                raise Exception("No protein atoms available in the interaction data.")
 
         # Validate the dimensions of the matrix
         self._verify_dimensions(matrix=matrix)
 
-        eje = self._get_residues_axis(matrix=matrix)
+        axis = self._get_residues_axis(matrix=matrix)
 
-        if eje == 'columns':
+        if axis == 'columns':
             matrix = self.transpose_matrix(matrix)
 
-        matrix = filtrar_lista(matrix=matrix, resultado=residues_selection, chain=chain)
+        filtered_matrix = filter_matrix(matrix=matrix, residues=residues_selection, chain=chain)
 
-        if eje == 'columns':
-            matrix = self.transpose_matrix(matrix)
+        if axis == 'columns':
+            filtered_matrix = self.transpose_matrix(filtered_matrix)
 
-        filtered_data.matrix = matrix
+        filtered_data.matrix = filtered_matrix
+
         if save:
             self.save_interaction_data(interaction_data=filtered_data, filename=save)
 
