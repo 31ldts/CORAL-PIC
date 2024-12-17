@@ -317,7 +317,8 @@ class AnalyzeInteractions:
             reset: bool = False,
             mode: str = None,
             heat_max_cols: int = None,
-            heat_colors: str = None
+            heat_colors: str = None,
+            interaction_data: InteractionData = None
             ) -> None:
         """
         Updates interaction labels and colors or resets them to default values.
@@ -364,9 +365,9 @@ class AnalyzeInteractions:
             self.heat_colors = "RdYlGn"
 
         self._check_variable_types(
-            variables=[interactions, plot_max_cols, plot_colors, reset, mode, heat_max_cols, heat_colors],
-            expected_types=[(list, None.__class__), (int, None.__class__), (list, None.__class__), bool, (str, None.__class__), (int, None.__class__), (str, None.__class__)],
-            variable_names=['interactions', 'plot_max_cols', 'colors', 'reset', 'mode', 'heat_max_elems', 'heat_colors']
+            variables=[interactions, plot_max_cols, plot_colors, reset, mode, heat_max_cols, heat_colors, interaction_data],
+            expected_types=[(list, None.__class__), (int, None.__class__), (list, None.__class__), bool, (str, None.__class__), (int, None.__class__), (str, None.__class__), (InteractionData, None.__class__)],
+            variable_names=['interactions', 'plot_max_cols', 'colors', 'reset', 'mode', 'heat_max_elems', 'heat_colors', 'interaction_data']
         )
 
         # Perform reset if requested
@@ -400,6 +401,9 @@ class AnalyzeInteractions:
             self.heat_max_cols = heat_max_cols
         if heat_colors:
             self.heat_colors = heat_colors
+        if interaction_data:
+            self.interaction_labels = interaction_data.interactions
+            self.plot_colors = interaction_data.colors
 
     #################################
     # Public Methods: Functionality #
@@ -413,7 +417,7 @@ class AnalyzeInteractions:
         ligand: bool = True, 
         subunit: bool = False, 
         save: str = None
-    ) -> list[list[str]]:
+    ) -> InteractionData:
         """
         Analyzes interaction data files in a specified directory, categorizing interactions
         based on protein and ligand atoms involved.
@@ -833,15 +837,17 @@ class AnalyzeInteractions:
             matrix = adjust_subunits(matrix=matrix)
         matrix = sort_interactions(matrix=matrix)
         matrix = label_matrix(matrix=matrix, rows=list(aa.keys()), columns=ligands, activity_file=activity_file, correction=files)
-        matrix = self.sort_matrix(matrix=matrix, residue_chain=True)
+        interaction_data = InteractionData(colors=self.plot_colors, interactions=self.interaction_labels,
+                                     ligand=ligand, matrix=matrix, mode=mode, protein=protein, subunit=subunit)
+        interaction_data = self.sort_matrix(interaction_data=interaction_data, residue_chain=True)
         # Save the matrix if specified
         if save:
-            self.save_matrix(matrix=matrix, filename=save)
+            self.save_interaction_data(interaction_data=interaction_data, filename=save)
 
-        return matrix
+        return interaction_data
     
     def filter_by_interaction(self, 
-            matrix: list[list[str]], 
+            interaction_data: InteractionData,
             interactions: list[int], 
             save: str = None
             ) -> list[list[str]]:
@@ -884,10 +890,12 @@ class AnalyzeInteractions:
 
         # Validate types of the matrix, interactions, and save parameters
         self._check_variable_types(
-            variables=[matrix, interactions, save], 
-            expected_types=[list, list, (str, None.__class__)], 
-            variable_names=['matrix', 'interactions', 'save']
+            variables=[interaction_data, interactions, save], 
+            expected_types=[InteractionData, list, (str, None.__class__)], 
+            variable_names=['interaction_data', 'interactions', 'save']
         )
+
+        matrix = interaction_data.matrix
 
         # Validate that the matrix has appropriate dimensions
         self._verify_dimensions(matrix=matrix)
@@ -929,17 +937,19 @@ class AnalyzeInteractions:
         if not changes:
             raise ValueError("No matching interactions were found in the matrix.")
 
+        interaction_data.matrix = filtered
+
         # Save the filtered matrix to a file if a save path is provided
         if save:
-            self.save_matrix(matrix=filtered, filename=save)
+            self.save_interaction_data(interaction_data=interaction_data, filename=save)
 
-        return filtered
+        return interaction_data
 
     def filter_by_subunit(self,
-            matrix: list[list[str]], 
+            interaction_data: InteractionData, 
             subunits: list[str], 
             save: str = None
-            ) -> list[list[str]]:
+            ) -> InteractionData:
         """
         Filters a matrix based on specified subunits, removing rows or columns
         that do not contain the desired subunits.
@@ -970,10 +980,12 @@ class AnalyzeInteractions:
         
         # Check types of the matrix, subunits, and save parameters
         self._check_variable_types(
-            variables=[matrix, subunits, save], 
-            expected_types=[list, list, (str, None.__class__)], 
-            variable_names=['matrix', 'subunits', 'save']
+            variables=[interaction_data, subunits, save], 
+            expected_types=[InteractionData, list, (str, None.__class__)], 
+            variable_names=['interaction_data', 'subunits', 'save']
         )
+
+        matrix = interaction_data.matrix
 
         # Validate the dimensions of the matrix
         self._verify_dimensions(matrix=matrix)
@@ -986,7 +998,7 @@ class AnalyzeInteractions:
 
         # Transpose the matrix if the axis is columns
         if axis == "columns":
-            filtered = self.transpose_matrix(matrix=filtered)
+            filtered = self.transpose_matrix(filtered)
         
         # Determine whether the matrix contains residues or interactions
         subunitsLocation = get_subunits_location(matrix=filtered)
@@ -1045,54 +1057,36 @@ class AnalyzeInteractions:
 
         # Transpose the matrix back if it was originally in columns
         if axis == "columns":
-            filtered = self.transpose_matrix(matrix=filtered)
+            filtered = self.transpose_matrix(filtered)
+
+        interaction_data.matrix = filtered
 
         # Save the filtered matrix to a file if a save path is provided
         if save:
-            self.save_matrix(matrix=filtered, filename=save)
+            self.save_interaction_data(interaction_data=interaction_data, filename=save)
 
-        return filtered
+        return interaction_data
 
-    def filter_chain(self, matrix: list[list[str]], chain: str = None, subpocket_path: str = None, subpockets: list[str] = None, save: str = None) -> list[list[str]]:
+    def filter_chain(self, 
+        interaction_data: InteractionData, 
+        chain: str = None, 
+        subpocket_path: str = None, 
+        subpockets: list[str] = None, 
+        save: str = None
+    ) -> InteractionData:
         """
-        Filters a matrix based on specified chain and subpocket.
+        Filters the interaction matrix based on specified chain and subpocket criteria.
 
         Args:
-            matrix (list): The matrix to filter, represented as a list of lists.
-            chain (str): The chain to filter.
-            subpocket (str): The subpocket to filter.
-            save (str, optional): The filename to save the filtered matrix. If None, the matrix will not be saved.
+            interaction_data (InteractionData): The interaction data containing the matrix.
+            chain (str, optional): The chain to filter ("<main>" or "<side>"). Default is None.
+            subpocket_path (str, optional): Path to the subpocket CSV file. Default is None.
+            subpockets (list[str], optional): List of subpocket names to filter. Default is None.
+            save (str, optional): Filename to save the filtered matrix. Default is None.
 
         Returns:
-            list: The filtered matrix with only the specified chain and subpocket.
-
-        Raises:
-            ValueError: If the matrix dimensions are invalid or if the chain or subpocket are not valid.
+            InteractionData: A new InteractionData object containing the filtered matrix.
         """
-
-        def get_chain(cell: str) -> str:
-            """
-            Extracts the chain from a cell string.
-
-            Args:
-                cell (str): The cell string containing chain data.            
-
-            Returns:
-                str: The chain extracted from the cell string.
-            """
-            return cell.split(GROUP_DELIM)[0].split(' ')[0]
-
-        def get_subpocket(cell: str) -> str:
-            """
-            Extracts the subpocket from a cell string.
-
-            Args:
-                cell (str): The cell string containing subpocket data.            
-
-            Returns:
-                str: The subpocket extracted from the cell string.
-            """
-            return cell.split(GROUP_DELIM)[0].split(' ')[1]
 
         def get_subpockets(subpocket_path: str, subpockets: list[str]) -> list[str]:
 
@@ -1104,55 +1098,131 @@ class AnalyzeInteractions:
                 for fila in lector:
                     if fila[0] in subpockets:
                         elementos_segunda_columna = fila[1].split(', ')
-                        residues.extend(elementos_segunda_columna)
+                        for elemento in elementos_segunda_columna:
+                            values = elemento.split('<')
+                            if len(values) == 2:
+                                check_chain("<" + values[1])
+                            residues.append(elemento)
             
             return residues
         
-        def filtrar_lista(matrix: list[list[str]], resultado: list[str]) -> list[list[str]]:
+        def filter_cell(fila: list[str], chain: str) -> list[str]:
+            atoms = ["C", "CA", "N", "O"]
+            atoms_expression = (lambda item: item in atoms) if chain == "<main>" else (lambda item: item not in atoms)
+            new_row = [fila[0]]
+            empty_row = True
+            for cell in fila[1:]:
+                if is_not_empty_or_dash(cell):
+                    new_cell = ""
+                    for interaction in cell.split(DIFF_DELIM):
+                        interaction_number = interaction.split(GROUP_DELIM)[0]
+                        interaction = interaction.split(GROUP_DELIM)[1]
+                        pairs = ""
+                        for pair in interaction.split(SAME_DELIM):
+                            # Hacer split - y quedarme con lo primero
+                            # Hacer split , y mirar cada uno en el momento de que se confirme
+                            # aunque no sea completo, se dejará
+                            protein = pair.split("-")[0]
+                            protein_atoms = protein.split(",")
+                            find = False
+                            for atom in protein_atoms:
+                                if atoms_expression(atom):
+                                    find = True
+                                    break
+                            if find:
+                                pairs += pair + SAME_DELIM
+                        if pairs != "":
+                            new_cell += interaction_number + GROUP_DELIM + pairs[:-2] + GROUP_DELIM + DIFF_DELIM
+                    if new_cell == "":
+                        new_cell = "-"
+                    else:
+                        new_cell = new_cell[:-2]
+                        empty_row = False
+                    new_row.append(new_cell)
+            return new_row, empty_row
+
+        def filtrar_lista(matrix: list[list[str]], resultado: list[str], chain: str) -> list[list[str]]:
             # Mantener la primera fila (encabezado) siempre
             matriz_filtrada = [matrix[0]]
-            
-            # Revisar cada fila a partir de la segunda
-            for fila in matrix[1:]:
-                if fila[0].replace(" ", "") in resultado:
-                    matriz_filtrada.append(fila)
-            
+
+            if len(resultado) != 0:
+                comparable = {x.split("<")[0]: "<" + x.split("<")[1] if len(x.split("<")) == 2 else "<all>" for x in resultado}
+                for fila in matrix[1:]:
+                    residue = fila[0].replace(" ", "").split("-")[0]
+                    if residue in comparable:
+                        if comparable[residue] != "<all>":
+                            fila, empty = filter_cell(fila, comparable[residue])
+                            if not empty:
+                                matriz_filtrada.append(fila)
+                        else:
+                         matriz_filtrada.append(fila)
+            else:
+                for fila in matrix[1:]:
+                    fila, empty = filter_cell(fila, chain)
+                    if not empty:
+                        matriz_filtrada.append(fila)
+
             return matriz_filtrada
 
+        def check_chain(chain):
+            valid_chains = ["<side>", "<main>"]
+            if chain not in valid_chains:
+                raise InvalidModeException(mode=chain, expected_values=valid_chains)
+            return True
 
         # Check types of the matrix, chain, and subpocket
         self._check_variable_types(
-            variables=[matrix, chain, subpockets, subpocket_path, save],
-            expected_types=[list, (str, None.__class__), (list, None.__class__), (str, None.__class__), (str, None.__class__)],
-            variable_names=['matrix', 'chain', 'subpockets', 'subpocket_path', 'save']
+            variables=[interaction_data, chain, subpockets, subpocket_path, save],
+            expected_types=[InteractionData, (str, None.__class__), (list, None.__class__), (str, None.__class__), (str, None.__class__)],
+            variable_names=['interaction_data', 'chain', 'subpockets', 'subpocket_path', 'save']
         )
 
-        if subpocket_path is not None:
+        filtered_data = copy.deepcopy(interaction_data)
+        matrix = filtered_data.matrix
+        residues_selection = []
+
+        # Extract residues if subpockets are provided
+        if subpocket_path and subpockets:
             subpocket_path = os.path.join(self.input_directory, subpocket_path)
+            residues = get_subpockets(subpocket_path=subpocket_path, subpockets=subpockets)
+            if chain:
+                check_chain(chain=chain)
+                if not filtered_data.protein:
+                    raise Exception("There are no protein atoms in the interaction data.")
+                for residue in residues:
+                    values = residue.split('<')
+                    if len(values) == 2:
+                        if "<" + values[1] == chain:
+                            residues_selection.append(residue)
+                    else:
+                        residues_selection.append(residue + chain)
+            else:
+                residues_selection = residues
+        elif chain:
+            check_chain(chain=chain)
+            if not filtered_data.protein:
+                raise Exception("There are no protein atoms in the interaction data.")
 
         # Validate the dimensions of the matrix
         self._verify_dimensions(matrix=matrix)
 
-        # Create a deep copy of the matrix to avoid modifying the original
-        filtered = copy.deepcopy(matrix)
-
-        eje = self._get_residues_axis(matrix=filtered)
+        eje = self._get_residues_axis(matrix=matrix)
 
         if eje == 'columns':
-            filtered = self.transpose_matrix(matrix=filtered)
+            matrix = self.transpose_matrix(matrix)
 
-        if subpockets and subpocket_path:
-            residues = get_subpockets(subpocket_path=subpocket_path, subpockets=subpockets)
-            filtered = filtrar_lista(matrix=filtered, resultado=residues)
+        matrix = filtrar_lista(matrix=matrix, resultado=residues_selection, chain=chain)
 
         if eje == 'columns':
-            filtered = self.transpose_matrix(matrix=filtered)
+            matrix = self.transpose_matrix(matrix)
+
+        filtered_data.matrix = matrix
         if save:
-            self.save_matrix(matrix=filtered, filename=save)
+            self.save_interaction_data(interaction_data=filtered_data, filename=save)
 
-        return filtered
+        return filtered_data
 
-    def heatmap(self, matrix: list[list[str]], title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, save: bool = False):
+    def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, save: bool = False):
         """
         Generates a heatmap based on the given interaction matrix and processing mode.
 
@@ -1161,7 +1231,7 @@ class AnalyzeInteractions:
         by splitting them into multiple heatmaps.
 
         Args:
-            matrix (list[list[str]]): The input matrix containing interaction data.
+            interaction_data (InteractionData): The interaction data to be processed.
             title (str): The title to display on the heatmap.
             mode (str): The processing mode. Supported modes include:
                 - 'min': Minimum interaction values.
@@ -1200,7 +1270,7 @@ class AnalyzeInteractions:
                 HeatmapActivityException: If any ligand activity value is negative.
             """
             if self._get_residues_axis == 'columns':
-                matrix = self.transpose_matrix(matrix=matrix)
+                matrix = self.transpose_matrix(matrix)
             for ligand in matrix[0][1:]:
                 activity = ligand.split('(')[-1].replace(")", "")
                 if float(activity) < 0.0:
@@ -1231,7 +1301,7 @@ class AnalyzeInteractions:
                     sections = cell.split(DIFF_DELIM)
 
                     for section in sections:
-                        if section.split(' ')[0] not in EMPTY_CELL:
+                        if is_not_empty_or_dash(section.split(' ')[0]):
                             interaction = int(section.split(' ')[0]) - 1
                             current_value = data[residue][interaction]
 
@@ -1280,7 +1350,7 @@ class AnalyzeInteractions:
             for line in matrix[1:]:
                 residue = line[0].split('-')[0]
                 data[residue] = [np.nan for _ in range(len(self.interaction_labels))]
-            return data, self.transpose_matrix(matrix=matrix)
+            return data, self.transpose_matrix(interaction_data=matrix)
 
         def plot_heatmap(self, data, title, x_label, y_label, mode, min_v, max_v, save):
             """
@@ -1333,6 +1403,10 @@ class AnalyzeInteractions:
                     plt.savefig(filename)
                     plt.close()
 
+        matrix = interaction_data.matrix
+
+        self.set_config(interaction_data=interaction_data)
+
         # Validate and prepare the matrix
         matrix = validate_and_prepare_matrix(matrix=matrix)
 
@@ -1347,7 +1421,7 @@ class AnalyzeInteractions:
         plot_heatmap(self=self, data=data, title=title, x_label=x_label, y_label=y_label, mode=mode, min_v=min_v, max_v=max_v, save=save)
 
     def bar_chart(self,
-        matrix: list[list[str]],
+        interaction_data: InteractionData,
         plot_name: str,
         axis: str,
         label_x: str = None,
@@ -1362,7 +1436,7 @@ class AnalyzeInteractions:
         Plots a bar chart or pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
 
         Args:
-            matrix (list of lists): The matrix containing interaction data.
+            interaction_data (InteractionData): An InteractionData object containing the interaction data.
             plot_name (str): The name of the plot to be saved (without extension).
             axis (str): Specifies whether to select rows ('rows') or columns ('columns').
             label_x (str, optional): Label for the X-axis. Defaults to "PDB complexes".
@@ -1377,6 +1451,8 @@ class AnalyzeInteractions:
             None
         """
 
+        matrix = interaction_data.matrix
+        self.set_config(interaction_data=interaction_data)
         # Initialize and get data
         colors, data, indices, transposed_data = self._plot_init(colors, matrix, axis, type_count)
         max_elements_plot = self.plot_max_cols
@@ -1512,7 +1588,7 @@ class AnalyzeInteractions:
         self._plot_end(save, plt, fig, plot_name)
 
     def pie_chart(self,
-        matrix: list[list[str]],
+        interaction_data: InteractionData,
         plot_name: str,
         axis: str,
         save: bool = False,
@@ -1523,7 +1599,7 @@ class AnalyzeInteractions:
         Plots a pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
 
         Args:
-            matrix (list of lists): The matrix containing interaction data.
+            interaction_data (InteractionData): The interaction data to be plotted.
             plot_name (str): The name of the plot to be saved (without extension).
             axis (str): Specifies whether to select rows ('rows') or columns ('columns').
             save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
@@ -1593,6 +1669,8 @@ class AnalyzeInteractions:
                 return zip(*non_zero_interactions)  # Separates into labels, sizes, and colors
             return [], [], []
         
+        self.set_config(interaction_data=interaction_data)
+        matrix = interaction_data.matrix
         # Initialize plotting parameters and data
         colors, data, indices, transposed_data = self._plot_init(colors, matrix, axis, type_count)
 
@@ -1609,18 +1687,18 @@ class AnalyzeInteractions:
 
     def remove_empty_axis(
             self, 
-            matrix: list[list[str]],
+            interaction_data: InteractionData,
             save: str = None
-            ) -> list[list[SyntaxError]]:
+            ) -> InteractionData:
         """
         Remove empty rows and columns from a given matrix.
 
         Args:
-            matrix (list[list[str]]): The input matrix from which empty rows and columns will be removed.
+            interaction_data (InteractionData): The input interaction data from which empty rows and columns will be removed.
             save (str, optional): The filename to save the cleaned matrix. If None, the matrix will not be saved.
 
         Returns:
-            list[list[str]]: The cleaned matrix with empty rows and columns removed.
+            InteractionData: The cleaned interaction data with empty rows and columns removed.
 
         Raises:
             TypeMismatchException: If the types of input variables do not match the expected types.
@@ -1645,71 +1723,101 @@ class AnalyzeInteractions:
             return matrix
 
         self._check_variable_types(
-            variables=[matrix, save], 
-            expected_types=[list, (str, None.__class__)], 
-            variable_names=['matrix', 'save']
+            variables=[interaction_data, save], 
+            expected_types=[InteractionData, (str, None.__class__)], 
+            variable_names=['interaction_data', 'save']
         )
+
+        matrix = interaction_data.matrix
 
         self._verify_dimensions(matrix=matrix)
 
         matrix = _remove_empty_rows(matrix=matrix)
         
         # Transpose the matrix, remove empty columns (which are now rows)
-        matrix = self.transpose_matrix(matrix=matrix)
+        matrix = self.transpose_matrix(matrix)
         matrix = _remove_empty_rows(matrix=matrix)
         
         # Transpose back to restore original format
-        matrix = self.transpose_matrix(matrix=matrix)
+        matrix = self.transpose_matrix(matrix)
+
+        interaction_data.matrix = matrix
 
         if save:
-            self.save_matrix(matrix=matrix, filename=save)
+            self.save_interaction_data(interaction_data=interaction_data, filename=save)
         
-        return matrix
-
-    def save_matrix(
-            self, 
-            matrix: list[list[str]], 
+        return interaction_data
+    
+    def save_interaction_data(
+            self,
+            interaction_data: InteractionData,
             filename: str
-            ) -> None:
+        ) -> None:
         """
-        Saves the matrix to a CSV file in the specified directory.
+        Saves the interaction data to an Excel file in the specified directory.
+
+        The matrix is saved in one sheet, and the other attributes are saved in a separate sheet.
 
         Args:
-            matrix (list[list[str]]): The matrix to be saved.
-            filename (str): The name of the file to save the matrix in.
+            interaction_data (InteractionData): The interaction data to be saved.
+            filename (str): The name of the file to save the data in.
 
         Returns:
             None
 
         Raises:
-            ValueError: If the dimensions of the matrix are not valid or if the lengths of input lists don't match.
-            InvalidFileExtensionException: If the filename does not end with '.csv'.
+            ValueError: If the dimensions of the matrix are not valid.
+            InvalidFileExtensionException: If the filename does not end with '.xlsx'.
             TypeMismatchException: If a variable type doesn't match the expected one.
         """
 
+        # Validate variable types
         self._check_variable_types(
-            variables=[matrix, filename], 
-            expected_types=[list, str], 
-            variable_names=['matrix', 'filename']
+            variables=[interaction_data, filename],
+            expected_types=[InteractionData, str],
+            variable_names=['interaction_data', 'filename']
         )
 
-        # Verify that the filename ends with .csv
-        if not filename.endswith('.csv'):
+        # Ensure the filename ends with .xlsx
+        if not filename.endswith('.xlsx'):
             raise InvalidFileExtensionException(filename)
 
-        self._verify_dimensions(matrix=matrix)
+        # Validate matrix dimensions
+        self._verify_dimensions(matrix=interaction_data.matrix)
 
-        # Create the CSV file
+        # Construct the file path
         file_path = os.path.join(self.saving_directory, filename)
-        with open(file_path, 'w', newline='') as csv_file:
-            csv_writer = csv.writer(csv_file)
 
-            # Write the rows of the matrix to the CSV file
-            for row in matrix:
-                csv_writer.writerow(row)
+        # Prepare data for the first sheet (Matrix)
+        matrix_df = pd.DataFrame(interaction_data.matrix)
+
+        # Prepare data for the second sheet (Attributes)
+        # Create id, interacciones, colores columns for lists
+        empty_strings = [""] * (len(interaction_data.interactions) - 1)  # Donde 'n' es el número de cadenas vacías que quieres.
+
+        interactions_data = pd.DataFrame({
+            "id": range(1, len(interaction_data.interactions) + 1),
+            "interacciones": interaction_data.interactions,
+            "colores": interaction_data.colors,
+            "ligand": ["Considered" if interaction_data.ligand else "Not considered"] + empty_strings,
+            "mode": [interaction_data.mode] + empty_strings,
+            "protein": ["Considered" if interaction_data.protein else "Not considered"] + empty_strings,
+            "subunit": ["Considered" if interaction_data.subunit else "Not considered"] + empty_strings
+        })
+
+        # Save to an Excel file with two sheets
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            # First sheet: Matrix
+            matrix_df.to_excel(writer, sheet_name='Matrix', index=False, header=False)
+
+            # Second sheet: Interactions & Attributes
+            # Write interactions and colors
+            interactions_data.to_excel(writer, sheet_name='Attributes', index=False, startrow=0)
+
+        print(f"Interaction data successfully saved to {file_path}")
 
     def sort_matrix(self,
-        matrix: list[list[str]],
+        interaction_data: InteractionData,
         axis: str = 'rows',
         thr_interactions: int = None,
         thr_activity: float = None,
@@ -1717,13 +1825,13 @@ class AnalyzeInteractions:
         count: bool = False,
         residue_chain: bool = False,
         save: str = None
-    ) -> list[list[str]]:
+    ) -> InteractionData:
 
         """
         Sorts and selects reactive rows or columns from a matrix based on interactions.
 
         Args:
-            matrix (list[list[str]]): The matrix containing interaction data.
+            interaction_data (InteractionData): The interaction data to be sorted.
             axis (str, optional): Specifies whether to select rows ('rows') or columns ('columns'). Defaults to 'rows'.
             thr_interactions (int, optional): Minimum number of interactions to select a row/column.
             thr_activity (float, optional): Activity threshold to select rows/columns if activity values are given.
@@ -1733,7 +1841,7 @@ class AnalyzeInteractions:
             save (str, optional): File path to save the resulting matrix.
 
         Returns:
-            list[list[str]]: The selected rows or columns based on the specified criteria.
+            InteractionMatrix: The sorted interaction matrix.
 
         Raises:
             ValueError: If both `thr_interactions` and `selected_items` are provided simultaneously.
@@ -1777,7 +1885,7 @@ class AnalyzeInteractions:
             
             # If sorting by columns, transpose the matrix first
             if axis == 'columns':
-                matrix = self.transpose_matrix(matrix=matrix)
+                matrix = self.transpose_matrix(matrix)
 
             # Separate the header from the data rows
             header = matrix[0]
@@ -1791,15 +1899,17 @@ class AnalyzeInteractions:
 
             # If sorting was by columns, transpose the sorted matrix back
             if axis == 'columns':
-                sorted_matrix = self.transpose_matrix(matrix=sorted_matrix)
+                sorted_matrix = self.transpose_matrix(sorted_matrix)
 
             return sorted_matrix
 
         self._check_variable_types(
-            variables=[matrix, axis, thr_interactions, thr_activity, selected_items, count, residue_chain, save], 
-            expected_types=[list, str, (int, None.__class__), (float, None.__class__), (int, None.__class__), bool, bool, (str, None.__class__)], 
-            variable_names=['matrix', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'residue_chain', 'save']
+            variables=[interaction_data, axis, thr_interactions, thr_activity, selected_items, count, residue_chain, save], 
+            expected_types=[InteractionData, str, (int, None.__class__), (float, None.__class__), (int, None.__class__), bool, bool, (str, None.__class__)], 
+            variable_names=['interaction_data', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'residue_chain', 'save']
         )
+
+        matrix = interaction_data.matrix
 
         self._verify_dimensions(matrix=matrix)
 
@@ -1820,7 +1930,7 @@ class AnalyzeInteractions:
 
         # Transpose the matrix if operating on columns
         if axis == 'columns':
-            matrix = self.transpose_matrix(matrix=matrix)
+            matrix = self.transpose_matrix(matrix)
         
         # Initialize a dictionary to store interaction counts per row/column
         reactives = {}
@@ -1859,27 +1969,29 @@ class AnalyzeInteractions:
 
         # Transpose the selection back if it was initially transposed for columns
         if axis == 'columns':
-            selection = self.transpose_matrix(matrix=selection)
+            selection = self.transpose_matrix(selection)
+
+        interaction_data.matrix = selection
 
         if save:
-            self.save_matrix(matrix=selection, filename=save)
+            self.save_interaction_data(interaction_data=interaction_data, filename=save)
 
-        return selection
+        return interaction_data
     
     def transpose_matrix(
             self, 
-            matrix: list[list[str]], 
+            interaction_data: InteractionData, 
             save: str = None
-            ) -> list[list[str]]:
+            ) -> InteractionData:
         """
         Transposes the given matrix.
 
         Args:
-            matrix (list[list[str]]): A matrix to transpose.
+            interaction_data (InteractionData): The interaction data to be transposed.
             save (str, optional): If provided, saves the transposed matrix to the specified file path.
 
         Returns:
-            list[list[str]]: The transposed matrix.
+            InteractionData: The transposed interaction data.
         
         Raises:
             TypeMismatchException: If the types of the provided arguments are incorrect.
@@ -1887,20 +1999,27 @@ class AnalyzeInteractions:
         """
         
         self._check_variable_types(
-            variables=[matrix, save], 
-            expected_types=[list, (str, None.__class__)], 
-            variable_names=['matrix', 'save']
+            variables=[interaction_data, save], 
+            expected_types=[(InteractionData, list), (str, None.__class__)], 
+            variable_names=['interaction_data', 'save']
         )
+
+        matrix = interaction_data.matrix if isinstance(interaction_data, InteractionData) else interaction_data
 
         self._verify_dimensions(matrix=matrix)
 
         # Transpose the matrix using list comprehension
         transposed = [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
-        if save:
-            self.save_matrix(matrix=transposed, filename=save)
+        if isinstance(interaction_data, InteractionData):
+            interaction_data.matrix = transposed
+        else:
+            interaction_data = transposed
 
-        return transposed
+        if save:
+            self.save_interaction_data(interaction_data=interaction_data, filename=save)
+
+        return interaction_data
 
 ##############
 # Exceptions #
