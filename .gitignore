@@ -2,9 +2,14 @@
 outputs/
 tests/
 tests_support_files/
-arpeggio-ifp/
-ichem-ifp/
-ichem-ifp-activities.csv
+diferencias.py
+diferencias/
+input/
+docs/
+ejemplos.py
+eliminar.py
+requirements.txt
+tests.py 
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

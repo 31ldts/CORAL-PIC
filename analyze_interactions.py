@@ -15,58 +15,61 @@ import operator
 # Globals #
 ###########
 
-# Labels for interaction types
+# Labels for different types of molecular interactions
 INTERACTION_LABELS = [
     "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
     "Ionic_PROT", "Ionic_LIG", "Metal Acceptor", "Pi/Cation", "Other_Interactions"
 ]
 
-# List of colors
+# List of colors corresponding to different interaction types
 COLORS = [
     "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
     "#9467bd", "#8c564b"
 ]
 
-# List of modes
+# List of available program modes
 PROGRAM_MODES = [
     "ichem", "arpeggio"
 ]
 
+# Available modes for heatmap visualization
 HEATMAP_MODES = [
     "max", "min", "mean", "count", "percent"
 ]
 
-# Arpeggio interaction entities
+# Arpeggio-specific interaction entities
 ARPEGGIO_INT_ENT = [
     "INTER"
 ]
 
+# Types of molecular contacts identified by Arpeggio
 ARPEGGIO_CONT = [
     "covalent", "hbond", "aromatic", "hydrophobic", "polar", "ionic", "xbond", "metal", 
     "carbonyl", "CARBONPI", "CATIONPI", "DONORPI", "HALOGENPI", "METSULPHURPI", 
     "AMIDEAMIDE", "AMIDERING"
 ]
 
+# Types of Arpeggio interactions (currently only plane-plane interactions)
 ARPEGGIO_TYPE = [
     "plane-plane"
 ]
 
+# Colors associated with Arpeggio interaction types
 ARPEGGIO_COLORS = [
     "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
     "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#ff9da7", "#1a9ceb", "#fdca52"
 ]
 
+# Constants for delimiters used in interaction data representation
+SAME_DELIM = ', '       # Separates interactions of the same type.
+DIFF_DELIM = '; '       # Separates interactions of different types.
+GROUP_DELIM = '|'       # Groups interactions of the same type.
 
-# Constants for delimiters
-SAME_DELIM = ', '       # Delimiter used to separate interactions of the same type.
-DIFF_DELIM = '; '       # Delimiter used to separate interactions of different types.
-GROUP_DELIM = '|'        # Delimiter used to group interactions of the same type.
+# Constants for handling empty cell values in interaction matrices
+EMPTY_CELL = ''         # Represents an originally empty cell.
+EMPTY_DASH_CELL = '-'   # Represents a cell that is considered empty after filtering.
 
-# Constants for cell values
-EMPTY_CELL = ''         # Represents an empty cell value from the beginning.
-EMPTY_DASH_CELL = '-'   # Represents a cell that is considered empty due to filtering.
-
-# Lista global con los códigos de 3 letras de los aminoácidos
+# Global list of three-letter amino acid codes
 AMINO_ACID_CODES = [
     "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS", "MET", 
     "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL"
@@ -277,16 +280,20 @@ class AnalyzeInteractions:
             mode: str
             ) -> None:
         """
-        Changes the saving directory to a specified subdirectory within the project.
+        Changes the working directory for saving or input operations.
 
         Args:
             path (str): Name of the subdirectory to switch to.
+            mode (str): Determines whether to change the input or output directory.
+                - 'input': Sets the directory for input files.
+                - 'output': Sets the directory for output files.
 
         Returns:
             None
 
         Raises:
-            ValueError: If the subdirectory does not exist within the project.
+            ValueError: If the specified directory does not exist.
+            InvalidModeException: If an invalid mode is provided.
         """
         
         self._check_variable_types(
@@ -321,18 +328,24 @@ class AnalyzeInteractions:
             interaction_data: InteractionData = None
             ) -> None:
         """
-        Updates interaction labels and colors or resets them to default values.
+        Configures interaction settings, including labels, colors, and visualization parameters.
 
         Args:
-            interactions (list[str], optional): List of interaction labels to update.
-            colors (list[str], optional): List of colors in hexadecimal format.
-            reset (bool, optional): If True, resets the configuration to default values.
+            interactions (list[str], optional): List of interaction labels.
+            plot_max_cols (int, optional): Maximum number of columns for plot visualization.
+            plot_colors (list[str], optional): List of colors in hexadecimal format.
+            reset (bool, optional): If True, resets configurations to default values.
+            mode (str, optional): Determines preset configurations for different analysis modes ('ichem' or 'arpeggio').
+            heat_max_cols (int, optional): Maximum number of columns for heatmap visualization.
+            heat_colors (str, optional): Color scheme for heatmaps.
+            interaction_data (InteractionData, optional): Object containing interaction settings to be applied.
 
         Returns:
             None
 
         Raises:
             InvalidColorException: If any color in the provided list is not a valid hexadecimal value.
+            InvalidModeException: If an invalid mode is provided.
         """
 
         def is_valid_hex_color(color: str) -> bool:
@@ -419,24 +432,30 @@ class AnalyzeInteractions:
         save: str = None
     ) -> InteractionData:
         """
-        Analyzes interaction data files in a specified directory, categorizing interactions
-        based on protein and ligand atoms involved.
+        Analyzes interaction data files in a specified directory, processing them according to the specified mode.
+
+        This function reads interaction data files, extracts relevant interaction details, and organizes them into a
+        structured matrix format. Optionally, an activity file can be provided to label data based on activity levels.
 
         Args:
             directory (str): Path to the directory containing interaction data files.
-            mode (str): Label to differentiate modes' files.
-            activity_file (str, optional): Path to the activity file (CSV) for labeling data.
-            protein (bool, optional): Include protein atoms in the analysis if True.
-            ligand (bool, optional): Include ligand atoms in the analysis if True.
-            subunit (bool, optional): Differentiate between subunits if True.
-            save (str, optional): Path to save the resulting matrix (optional).
+            mode (str): Processing mode. Supported modes:
+                - 'ichem': Processes IChem interaction files.
+                - 'arpeggio': Processes Arpeggio interaction files.
+            activity_file (str, optional): Path to a CSV file containing activity data for annotation.
+            protein (bool, optional): Whether to include protein atoms in the analysis. Defaults to True.
+            ligand (bool, optional): Whether to include ligand atoms in the analysis. Defaults to True.
+            subunit (bool, optional): Whether to differentiate between protein subunits. Defaults to False.
+            save (str, optional): Path to save the processed interaction matrix. Defaults to None.
 
         Returns:
-            list[list[str]]: A matrix categorizing interactions between residues and files.
+            InteractionData: An object containing the processed interaction matrix, metadata, and interaction labels.
 
         Raises:
             FileNotFoundError: If the specified directory or activity file does not exist.
-            EmptyDirectoryException: If the specified directory is empty.
+            EmptyDirectoryException: If the specified directory contains no valid files.
+            InvalidModeException: If the provided mode is not supported.
+            InvalidFilenameException: If any file names contain spaces or invalid characters.
         """
 
         def label_matrix(
@@ -447,16 +466,19 @@ class AnalyzeInteractions:
             correction: list[str] = None
         ) -> list[list[str]]:
             """
-            Adds headers to the interaction matrix with residue names and file names.
+            Adds appropriate headers to the interaction matrix, including residue and file names.
+
+            If an activity file is provided, it also labels the columns with corresponding activity values.
 
             Args:
                 matrix (list[list[str]]): 2D list representing interaction data.
                 rows (list[str]): List of residue names for row labeling.
                 columns (list[str]): List of file names for column labeling.
                 activity_file (str): Path to the activity file for activity-based labeling.
+                correction (list[str], optional): Optional list to correct column names.
 
             Returns:
-                list[list[str]]: The labeled matrix.
+                list[list[str]]: The labeled interaction matrix.
             """
             rows = [row.replace("\t", "") for row in rows]
             if self.codes and correction:
@@ -510,15 +532,16 @@ class AnalyzeInteractions:
                 interaction_labels: list,
                 ) -> str:
             """
-            Updates the cell content by adding the interaction type and the involved atoms.
+            Updates the cell content by adding interaction type and involved atoms.
 
             Args:
-                text (str): Current cell content.
-                interaction (str): The interaction type.
+                text (str): Current content of the matrix cell.
+                interaction (str): Type of interaction occurring.
                 atoms (str): Atoms involved in the interaction.
+                interaction_labels (list): List of predefined interaction labels.
 
             Returns:
-                str: The updated cell content.
+                str: Updated cell content with formatted interaction information.
             """
             # Create an interaction_map based on the global INTERACTION_LABELS list
             interaction_map = {label: str(index + 1) for index, label in enumerate(interaction_labels)}
@@ -555,17 +578,19 @@ class AnalyzeInteractions:
                 file_name: str
                 ) -> list[str]:
             """
-            Reads a file and returns its content as a list of lines.
+            Reads the specified file and returns its content as a list of lines.
+
+            Supports reading both JSON and text-based interaction files.
 
             Args:
                 file_name (str): The name of the file to read.
 
             Returns:
-                list[str]: List of lines from the file.
+                list[str]: List of lines from the file (for text files) or parsed JSON data.
 
             Raises:
                 FileNotFoundError: If the file does not exist.
-                Exception: For any unexpected errors during reading.
+                Exception: If an unexpected error occurs during reading.
             """
             try:
                 with open(file_name, 'r') as file:
@@ -584,13 +609,15 @@ class AnalyzeInteractions:
                 matrix: list[list[str]], 
                 ) -> list[list[str]]:
             """
-            Adjusts matrix data to reflect residue counts for subunits.
+            Adjusts matrix entries to correctly reflect subunit information for residues.
+
+            Removes duplicate atoms and ensures that subunit data is accurately represented.
 
             Args:
-                matrix (list[list[str]]): The interaction matrix.
+                matrix (list[list[str]]): The interaction matrix to modify.
 
             Returns:
-                list[list[str]]: Matrix with adjusted subunit information.
+                list[list[str]]: Updated matrix with subunit adjustments.
             """
             
             def remove_duplicate_atoms(
@@ -633,13 +660,13 @@ class AnalyzeInteractions:
                 matrix: list[list[str]]
                 ) -> list[list[str]]:
             """
-            Sorts the interactions within each cell of the matrix in ascending order based on the number that follows the initial space.
+            Sorts the interaction types within each cell of the matrix in ascending order.
 
             Args:
-                matrix (list[list[str]]): The matrix to be sorted, represented as a list of lists.
+                matrix (list[list[str]]): The matrix to be sorted.
 
             Returns:
-                list[list[str]]: The sorted matrix with interactions in each cell ordered in ascending order.
+                list[list[str]]: The sorted matrix with interactions ordered numerically.
             """
             for row_index, row in enumerate(matrix):
                 for cell_index, cell in enumerate(row):
@@ -660,21 +687,20 @@ class AnalyzeInteractions:
                 input_string: str
                 ) -> bool:
             """
-            Validates the given string to ensure it follows a specific format:
-            - The first three characters must represent an amino acid abbreviation.
-            - A space follows the amino acid.
-            - After the space(s), there must be a sequence of digits followed by a dash and additional characters.
+            Validates a residue string to ensure it follows the expected format.
+
+            Format:
+            - Starts with a three-letter amino acid abbreviation.
+            - Followed by spaces and a numeric sequence.
+            - Ends with a dash and additional characters.
 
             Args:
-                input_string (str): The string to be validated.
+                input_string (str): The residue string to validate.
 
             Returns:
-                bool: True if the string matches the required format, False otherwise.
+                bool: True if the format is valid, False otherwise.
             """
-            # Regular expression to validate the required format:
-            # - Three uppercase letters (amino acid abbreviation)
-            # - Followed by one or more spaces
-            # - One or more digits, a dash, and then anything after it
+            # Regular expression to validate the required format
             pattern = r'^[A-Z]{3} +\d+-.+$'
             
             # Match the input string with the regular expression pattern
@@ -696,9 +722,31 @@ class AnalyzeInteractions:
                 return None, None
 
         def validate_file(filename):
+            """
+            Checks if a filename is valid (i.e., contains no spaces).
+
+            Args:
+                filename (str): Name of the file.
+
+            Returns:
+                bool: True if the filename is valid, False otherwise.
+            """
             return True if filename.count(' ') == 0 else False
         
         def check_directory(directory):
+            """
+            Validates and retrieves the list of files in the specified directory.
+
+            Args:
+                directory (str): Path to the directory.
+
+            Returns:
+                list[str]: List of filenames in the directory.
+
+            Raises:
+                FileNotFoundError: If the directory does not exist.
+                EmptyDirectoryException: If the directory is empty.
+            """
             if not os.path.exists(directory):
                 raise FileOrDirectoryException(path=directory, error_type='not_found')
             elif not os.path.isdir(directory):
@@ -710,6 +758,9 @@ class AnalyzeInteractions:
             return files
 
         def ichem_analysis(content, index, files, subunits_set, cont, matrix, aa):
+            """
+            Processes IChem interaction files, extracting relevant data and updating the matrix.
+            """
             for line in content:
                 elements = line.split(GROUP_DELIM)
                 if len(elements) == 10:
@@ -738,6 +789,9 @@ class AnalyzeInteractions:
             return matrix, aa, cont, subunits_set
 
         def arpeggio_analysis(content, index, files, subunits_set, cont, matrix, aa):
+            """
+            Processes Arpeggio interaction files, extracting relevant data and updating the matrix.
+            """
             # Filter to obtain entries with interacting_entities == INTER
             inter_set = [elem for elem in content if elem["interacting_entities"] in ARPEGGIO_INT_ENT]
             # Filter to obtain entries with the desired contact or type
@@ -850,20 +904,20 @@ class AnalyzeInteractions:
             interaction_data: InteractionData,
             interactions: list[int], 
             save: str = None
-            ) -> list[list[str]]:
+            ) -> InteractionData:
         """
-        Filters a matrix based on specified interaction types.
+        Filters an interaction matrix based on specified interaction types.
 
         Args:
-            matrix (list): The matrix to filter, represented as a list of lists.
-            interactions (list): List of valid interaction types (numbers 1 to 7) to retain in the matrix.
-            save (str, optional): Path to save the filtered matrix. Defaults to None.
+            interaction_data (InteractionData): The object containing the interaction matrix.
+            interactions (list[int]): List of valid interaction types (numbers 1 to 7) to retain in the matrix.
+            save (str, optional): File path to save the filtered matrix. Defaults to None.
 
         Returns:
-            list: The filtered matrix with only the specified interactions retained.
+            InteractionData: The updated InteractionData object with the filtered matrix.
 
         Raises:
-            ValueError: If the matrix dimensions are invalid, or if no desired interactions are found.
+            ValueError: If the matrix dimensions are invalid, or if no matching interactions are found.
         """
 
         def validate_list(interactions: list[int]) -> None:
@@ -951,19 +1005,22 @@ class AnalyzeInteractions:
             save: str = None
             ) -> InteractionData:
         """
-        Filters a matrix based on specified subunits, removing rows or columns
-        that do not contain the desired subunits.
+        Filters an interaction matrix based on specified subunits.
+
+        This method processes an interaction matrix and removes rows or interaction elements 
+        that do not match the provided subunit list. The filtering mechanism depends on whether 
+        the matrix is organized by residues or interactions.
 
         Args:
-            matrix (list): The matrix to filter, represented as a list of lists.
-            subunits (list): List of valid subunits to retain in the matrix.
-            save (str, optional): Path to save the filtered matrix. Defaults to None.
+            interaction_data (InteractionData): The object containing the interaction matrix.
+            subunits (list[str]): List of valid subunits used as filtering criteria.
+            save (str, optional): File path to save the filtered matrix. Defaults to None.
 
         Returns:
-            list: The filtered matrix with only the specified subunits retained.
+            InteractionData: The updated InteractionData object with the filtered matrix.
 
         Raises:
-            ValueError: If the matrix dimensions are invalid or if no desired subunits are found.
+            ValueError: If the matrix dimensions are invalid or if no matching subunits are found.
         """
         
         def get_subunits_location(matrix: list[list[str]]) -> str:
@@ -1050,10 +1107,6 @@ class AnalyzeInteractions:
                         # Update the cell with filtered interactions
                         cell = cell[:-2]  # Remove trailing comma and space
                         filtered[i][j] = cell if cell else EMPTY_DASH_CELL
-        
-        # Raise an error if no changes were made (no desired subunits found)
-        '''if changes == 0:
-            raise ValueError("The matrix does not contain any of the desired subunits.")'''
 
         # Transpose the matrix back if it was originally in columns
         if axis == "columns":
@@ -1075,17 +1128,31 @@ class AnalyzeInteractions:
         save: str = None
     ) -> InteractionData:
         """
-        Filters the interaction matrix based on specified chain and subpocket criteria.
+        Filters an interaction matrix based on a specified chain or subpockets.
+
+        This method processes an interaction matrix and removes rows or interaction elements 
+        that do not match the provided chain or residues extracted from the given subpockets.
+
+        The filtering can be performed in two ways:
+        1. By specifying a `chain` ("<main>" or "<side>"), which filters interactions 
+        based on the presence of main or side chain atoms.
+        2. By providing a `subpocket_path` and a list of `subpockets`, which extracts 
+        residues from a predefined subpocket file and filters interactions accordingly.
 
         Args:
-            interaction_data (InteractionData): The interaction data containing the matrix.
-            chain (str, optional): The chain to filter ("<main>" or "<side>"). Default is None.
-            subpocket_path (str, optional): Path to the subpocket CSV file. Default is None.
-            subpockets (list[str], optional): List of subpocket names to filter. Default is None.
-            save (str, optional): Filename to save the filtered matrix. Default is None.
+            interaction_data (InteractionData): The object containing the interaction matrix.
+            chain (str, optional): Specifies whether to retain "<main>" or "<side>" interactions. Defaults to None.
+            subpocket_path (str, optional): Path to the file containing subpocket residue definitions. Defaults to None.
+            subpockets (list[str], optional): List of subpockets to use for residue-based filtering. Defaults to None.
+            save (str, optional): File path to save the filtered matrix. Defaults to None.
 
         Returns:
-            InteractionData: A new InteractionData object containing the filtered matrix.
+            InteractionData: The updated InteractionData object with the filtered matrix.
+
+        Raises:
+            ValueError: If the matrix dimensions are invalid.
+            InvalidModeException: If an invalid chain mode is specified.
+            Exception: If no protein atoms are available in the interaction data when filtering by chain.
         """
 
         def extract_subpockets_from_file(subpocket_file_path: str, subpocket_list: list[str]) -> list[str]:
@@ -1173,7 +1240,7 @@ class AnalyzeInteractions:
                         filtered_row, is_empty = filter_row(row, residue_chain_map[residue])
                         if not is_empty:
                             filtered_matrix.append(filtered_row)
-                else:
+                elif chain:
                     filtered_row, is_empty = filter_row(row, chain)
                     if not is_empty:
                         filtered_matrix.append(filtered_row)
@@ -1212,6 +1279,7 @@ class AnalyzeInteractions:
                             residues_selection.append(residue)
                     else:
                         residues_selection.append(residue + chain)
+                chain = None
             else:
                 residues_selection = residues
         elif chain:
@@ -1241,33 +1309,35 @@ class AnalyzeInteractions:
 
     def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, save: bool = False):
         """
-        Generates a heatmap based on the given interaction matrix and processing mode.
+        Generates a heatmap based on interaction data using different processing modes.
 
-        This method processes the provided matrix, calculates interaction statistics, and creates a visual heatmap. 
-        It supports various modes for data analysis and automatically adjusts the visualization for large datasets 
-        by splitting them into multiple heatmaps.
+        This method processes the interaction matrix, computes interaction statistics 
+        according to the specified mode, and generates a heatmap visualization. If the 
+        dataset is large, the visualization is split into multiple heatmaps.
+
+        Supported processing modes:
+            - 'min': Displays the minimum interaction values.
+            - 'max': Displays the maximum interaction values.
+            - 'mean': Computes and visualizes the average interaction values.
+            - 'count': Counts the occurrences of interactions.
+            - 'percent': Displays the percentage of interactions.
 
         Args:
-            interaction_data (InteractionData): The interaction data to be processed.
-            title (str): The title to display on the heatmap.
-            mode (str): The processing mode. Supported modes include:
-                - 'min': Minimum interaction values.
-                - 'max': Maximum interaction values.
-                - 'mean': Average interaction values.
-                - 'count': Counts of interaction occurrences.
-                - 'percent': Percentage of interaction occurrences.
-            x_label (str, optional): The label for the x-axis. Defaults to an empty string.
-            y_label (str, optional): The label for the y-axis. Defaults to an empty string.
-            min_v (int, optional): The minimum value for the heatmap color scale. Defaults to None (automatic).
-            max_v (int, optional): The maximum value for the heatmap color scale. Defaults to None (automatic).
-            save (bool, optional): If True, saves the heatmap(s) to files instead of displaying them. Defaults to False.
+            interaction_data (InteractionData): The object containing the interaction matrix.
+            title (str): Title of the heatmap.
+            mode (str): Processing mode ('min', 'max', 'mean', 'count', or 'percent').
+            x_label (str, optional): Label for the x-axis. Defaults to an empty string.
+            y_label (str, optional): Label for the y-axis. Defaults to an empty string.
+            min_v (int, optional): Minimum value for the heatmap color scale. Defaults to None (auto-scaling).
+            max_v (int, optional): Maximum value for the heatmap color scale. Defaults to None (auto-scaling).
+            save (bool, optional): If True, saves the heatmap instead of displaying it. Defaults to False.
 
         Returns:
             None: The function either displays the heatmap(s) or saves them to files.
 
         Raises:
-            InvalidModeException: If the provided mode is not supported.
-            HeatmapActivityException: If an invalid activity value is encountered in the matrix.
+            InvalidModeException: If an unsupported processing mode is provided.
+            HeatmapActivityException: If the matrix contains invalid or negative activity values.
         """
 
         def validate_and_prepare_matrix(matrix: list[list[str]]):
@@ -1396,13 +1466,20 @@ class AnalyzeInteractions:
             num_heatmaps = (num_cols + max_cols - 1) // max_cols  # Round up
             cols_per_heatmap = (num_cols + num_heatmaps - 1) // num_heatmaps  # Distribute evenly
 
+            if mode == 'count':
+                tagMin = f"{vmin:.0f}"
+                tagMax = f"{vmax:.0f}"
+            else:
+                tagMin = f"{vmin:.1f}"
+                tagMax = f"{vmax:.1f}"
+
             for i in range(num_heatmaps):
                 start_col = i * cols_per_heatmap
                 end_col = min((i + 1) * cols_per_heatmap, num_cols)
                 df_subset = df.iloc[:, start_col:end_col]
 
                 plt.figure(figsize=(14, 9))
-                sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax)
+                sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax, cbar_kws={"ticks": np.linspace(vmin, vmax, num=6)})
 
                 if num_heatmaps == 1:
                     plt.title(f"{title}")
@@ -1450,22 +1527,37 @@ class AnalyzeInteractions:
         type_count: bool = False
     ) -> None:
         """
-        Plots a bar chart or pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
+        Generates a bar chart based on interaction data.
+
+        This method extracts relevant data from an interaction matrix and visualizes it 
+        as a bar chart. If the dataset is too large, it automatically splits the data into 
+        multiple plots for better readability.
+
+        The method supports:
+        - **Standard bar charts**: A single bar per residue or PDB complex.
+        - **Stacked bar charts** (`stacked=True`): Bars grouped by interaction types, 
+        showing their relative contribution.
+        - **Interactive annotations**: Hovering over stacked bars displays the percentage 
+        of each interaction type.
+        - **Automatic data splitting**: Large datasets are split into multiple charts.
 
         Args:
-            interaction_data (InteractionData): An InteractionData object containing the interaction data.
-            plot_name (str): The name of the plot to be saved (without extension).
-            axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-            label_x (str, optional): Label for the X-axis. Defaults to "PDB complexes".
-            label_y (str, optional): Label for the Y-axis. Defaults to "Number of intermolecular interactions".
-            title (str, optional): Title of the plot. Defaults to "Protein-drug interactions".
+            interaction_data (InteractionData): The object containing the interaction matrix.
+            plot_name (str): Name of the plot (used for saving).
+            axis (str): Defines whether to plot rows ('rows') or columns ('columns').
+            label_x (str, optional): Label for the x-axis. Defaults to "Interacting protein residues".
+            label_y (str, optional): Label for the y-axis. Defaults to "Number of intermolecular interactions".
+            title (str, optional): Title of the chart. Defaults to "Protein-drug interactions".
             stacked (bool, optional): If True, creates a stacked bar chart. Defaults to False.
-            save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
-            show_pie_chart (bool, optional): If True, shows a pie chart instead of a bar chart. Defaults to False.
-            colors (list, optional): List of colors to use for each interaction type. Defaults to None.
+            save (bool, optional): If True, saves the chart as a PNG file. Defaults to False.
+            colors (list[str], optional): List of colors for interaction types. Defaults to None.
+            type_count (bool, optional): If True, counts the occurrences of each interaction type. Defaults to False.
 
         Returns:
-            None
+            None: The function either displays or saves the plot.
+
+        Raises:
+            ValueError: If `axis` is not 'rows' or 'columns'.
         """
 
         matrix = interaction_data.matrix
@@ -1613,18 +1705,23 @@ class AnalyzeInteractions:
         type_count: bool = False
     ) -> None:
         """
-        Plots a pie chart based on selected rows or columns of a matrix and saves it as a PNG file.
+        Generates a pie chart based on interaction data.
+
+        This method processes an interaction matrix, calculates the proportion of different interaction 
+        types, and visualizes them as a pie chart. Interaction types with zero occurrences are automatically 
+        filtered out. The chart can be displayed or saved as a PNG file.
 
         Args:
-            interaction_data (InteractionData): The interaction data to be plotted.
-            plot_name (str): The name of the plot to be saved (without extension).
-            axis (str): Specifies whether to select rows ('rows') or columns ('columns').
-            save (bool, optional): If True, saves the plot as a PNG file. Defaults to False.
-            colors (list, optional): List of colors to use for each interaction type. Defaults to None.
-            type_count (bool, optional): If True, counts types of interactions. Defaults to False.
+            interaction_data (InteractionData): The object containing the interaction matrix.
+            plot_name (str): The name of the plot (used for saving).
+            axis (str): Defines whether to analyze rows ('rows') or columns ('columns').
+            save (bool, optional): If True, saves the pie chart instead of displaying it. Defaults to False.
+            colors (list[str], optional): List of colors for interaction types. Defaults to None.
+            type_count (bool, optional): If True, counts the occurrences of each interaction type instead of 
+                                        using interaction values. Defaults to False.
 
         Returns:
-            None
+            None: The function either displays or saves the plot.
         """
 
         def _filter_non_zero_interactions(total_interactions: list[int], colors: list[str]) -> list[tuple]:
@@ -1708,7 +1805,11 @@ class AnalyzeInteractions:
             save: str = None
             ) -> InteractionData:
         """
-        Remove empty rows and columns from a given matrix.
+        Removes empty rows and columns from the interaction matrix.
+
+        This method iterates through the interaction matrix and removes rows and columns 
+        that contain only empty or placeholder values (e.g., dashes or empty strings). 
+        The cleaned matrix maintains the original structure and is optionally saved to a file.
 
         Args:
             interaction_data (InteractionData): The input interaction data from which empty rows and columns will be removed.
@@ -1719,7 +1820,7 @@ class AnalyzeInteractions:
 
         Raises:
             TypeMismatchException: If the types of input variables do not match the expected types.
-            ValueError: If the dimensions of the matrix are not valid or if the matrix is too small or any row is too short.
+            ValueError: If the matrix dimensions are invalid or if it is too small after cleaning.
         """
         
         def _remove_empty_rows(matrix: list[list[str]]) -> list[list[str]]:
@@ -1773,17 +1874,21 @@ class AnalyzeInteractions:
         """
         Saves the interaction data to an Excel file in the specified directory.
 
-        The matrix is saved in one sheet, and the other attributes are saved in a separate sheet.
+        This method exports the interaction matrix and additional attributes to an Excel file 
+        with two separate sheets:
+            - **Matrix**: Contains the interaction matrix.
+            - **Attributes**: Stores metadata such as interaction types, colors, ligand status, 
+            processing mode, protein consideration, and subunit status.
 
         Args:
             interaction_data (InteractionData): The interaction data to be saved.
-            filename (str): The name of the file to save the data in.
+            filename (str): The name of the output file (must end with '.xlsx').
 
         Returns:
             None
 
         Raises:
-            ValueError: If the dimensions of the matrix are not valid.
+            ValueError: If the matrix dimensions are not valid.
             InvalidFileExtensionException: If the filename does not end with '.xlsx'.
             TypeMismatchException: If a variable type doesn't match the expected one.
         """
@@ -1843,27 +1948,42 @@ class AnalyzeInteractions:
         residue_chain: bool = False,
         save: str = None
     ) -> InteractionData:
-
         """
-        Sorts and selects reactive rows or columns from a matrix based on interactions.
+        Sorts and filters rows or columns in the interaction matrix based on interaction criteria.
+
+        This method sorts and selects reactive rows or columns in the interaction matrix according 
+        to the specified criteria. It supports selection based on:
+        - **Minimum interaction count** (`thr_interactions`): Keeps rows/columns with at least 
+        the specified number of interactions.
+        - **Activity threshold** (`thr_activity`): Selects rows/columns where the activity value 
+        meets or exceeds the given threshold.
+        - **Top-ranked selection** (`selected_items`): Retains only the top N rows/columns based 
+        on interaction count.
+        - **Residue chain sorting** (`residue_chain=True`): Orders the matrix by residue index 
+        after filtering.
+
+        The method can also return just the interaction count per row/column (`count=True`). If 
+        both `thr_interactions` and `selected_items` are provided, an error is raised.
 
         Args:
             interaction_data (InteractionData): The interaction data to be sorted.
-            axis (str, optional): Specifies whether to select rows ('rows') or columns ('columns'). Defaults to 'rows'.
-            thr_interactions (int, optional): Minimum number of interactions to select a row/column.
-            thr_activity (float, optional): Activity threshold to select rows/columns if activity values are given.
-            selected_items (int, optional): Number of top rows/columns to select based on interactions.
-            count (bool, optional): If True, returns the count of interactions instead of the matrix.
+            axis (str, optional): Specifies whether to sort rows ('rows') or columns ('columns'). Defaults to 'rows'.
+            thr_interactions (int, optional): Minimum number of interactions required to retain a row/column.
+            thr_activity (float, optional): Minimum activity value required to retain a row/column.
+            selected_items (int, optional): Number of top rows/columns to keep based on interaction count.
+            count (bool, optional): If True, returns the count of interactions instead of modifying the matrix.
             residue_chain (bool, optional): If True, sorts the resulting matrix based on residue order in the chain.
-            save (str, optional): File path to save the resulting matrix.
+            save (str, optional): File path to save the resulting matrix. Defaults to None.
 
         Returns:
-            InteractionMatrix: The sorted interaction matrix.
+            InteractionData: The sorted interaction matrix.
 
         Raises:
-            ValueError: If both `thr_interactions` and `selected_items` are provided simultaneously.
-            ValueError: If the matrix dimensions are insufficient.
+            ValueError: If multiple selection criteria (`thr_interactions`, `thr_activity`, `selected_items`) are used simultaneously.
+            InvalidAxisException: If an invalid axis is provided.
+            ValueError: If the matrix dimensions are insufficient for sorting.
         """
+        
         def get_interactions(
                 cell: str
                 ) -> int:
@@ -2001,18 +2121,22 @@ class AnalyzeInteractions:
             save: str = None
             ) -> InteractionData:
         """
-        Transposes the given matrix.
+        Transposes the given interaction matrix.
+
+        This method swaps rows and columns in the interaction matrix, effectively 
+        transposing it. If a save path is provided, the transposed matrix is stored 
+        as a file.
 
         Args:
-            interaction_data (InteractionData): The interaction data to be transposed.
-            save (str, optional): If provided, saves the transposed matrix to the specified file path.
+            interaction_data (InteractionData): The interaction data containing the matrix to be transposed.
+            save (str, optional): File path to save the transposed matrix. Defaults to None.
 
         Returns:
-            InteractionData: The transposed interaction data.
-        
+            InteractionData: The updated InteractionData object with the transposed matrix.
+
         Raises:
-            TypeMismatchException: If the types of the provided arguments are incorrect.
-            ValueError: If the dimensions of the matrix are not valid.
+            TypeMismatchException: If the provided arguments have incorrect types.
+            ValueError: If the matrix dimensions are invalid.
         """
         
         self._check_variable_types(
