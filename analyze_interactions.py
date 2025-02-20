@@ -107,6 +107,21 @@ class InteractionData:
 
 class AnalyzeInteractions:
 
+    ROWS = "rows"
+    COLUMNS = "columns"
+
+    ARPEGGIO = "arpeggio"
+    ICHEM = "ichem"
+
+    INPUT = "input"
+    OUTPUT = "output"
+
+    MINIMUM = "min"
+    MAXIMUM = "max"
+    MEAN = "mean"
+    COUNT = "count"
+    PERCENT = "percent"
+
     def __init__(self):
         """Initializes the class with the current working directory and default settings."""
         self.saving_directory = os.getcwd()  # Set the default saving directory
@@ -1937,8 +1952,8 @@ class AnalyzeInteractions:
 
         interactions_data = pd.DataFrame({
             "id": range(1, len(interaction_data.interactions) + 1),
-            "interacciones": interaction_data.interactions,
-            "colores": interaction_data.colors,
+            "interactions": interaction_data.interactions,
+            "colors": interaction_data.colors,
             "ligand": ["Considered" if interaction_data.ligand else "Not considered"] + empty_strings,
             "mode": [interaction_data.mode] + empty_strings,
             "protein": ["Considered" if interaction_data.protein else "Not considered"] + empty_strings,
@@ -1954,13 +1969,13 @@ class AnalyzeInteractions:
             # Write interactions and colors
             interactions_data.to_excel(writer, sheet_name='Attributes', index=False, startrow=0)
 
-        # Aplicar colores de fondo a la columna "colores"
+        # Apply background colors to the row "colors"
         wb = load_workbook(file_path)
         ws = wb["Attributes"]
 
-        col_index = 3  # Columna "colores" (1-based index en Excel)
+        col_index = 3  # Column "colors" (1-based index in Excel)
 
-        for row_idx, color_hex in enumerate(interaction_data.colors, start=2):  # Empieza en la fila 2 (saltando el header)
+        for row_idx, color_hex in enumerate(interaction_data.colors, start=2):  # Starts on row 2 (skipping the header)
             fill = PatternFill(start_color=color_hex.replace("#", ""), end_color=color_hex.replace("#", ""), fill_type="solid")
             ws.cell(row=row_idx, column=col_index).fill = fill
 
