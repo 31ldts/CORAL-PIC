@@ -84,7 +84,7 @@ AMINO_ACID_CODES = [
 is_not_empty_or_dash = lambda cell: not (cell == EMPTY_DASH_CELL or cell == EMPTY_CELL)
 
 class InteractionData:
-    def __init__(self, colors, interactions, ligand, matrix, mode, protein, subunit):
+    def __init__(self, colors, interactions, ligand, matrix, mode, protein, subunit, subunits_set):
         self.colors = colors
         self.interactions = interactions
         self.ligand = ligand
@@ -92,6 +92,7 @@ class InteractionData:
         self.mode = mode
         self.protein = protein
         self.subunit = subunit
+        self.subunits_set = subunits_set
 
     def compare(self, other):
         # En lugar de isinstance, verificamos que tenga los mismos atributos
@@ -921,7 +922,7 @@ class AnalyzeInteractions:
         matrix = sort_interactions(matrix=matrix)
         matrix = label_matrix(matrix=matrix, rows=list(aa.keys()), columns=ligands, activity_file=activity_file, correction=files)
         interaction_data = InteractionData(colors=self.plot_colors, interactions=self.interaction_labels,
-                                     ligand=ligand, matrix=matrix, mode=mode, protein=protein, subunit=subunit)
+                                     ligand=ligand, matrix=matrix, mode=mode, protein=protein, subunit=subunit, subunits_set=subunits_set)
         interaction_data = self.sort_matrix(interaction_data=interaction_data, residue_chain=True)
         # Save the matrix if specified
         if save:
@@ -1949,15 +1950,16 @@ class AnalyzeInteractions:
         # Prepare data for the second sheet (Attributes)
         # Create id, interacciones, colores columns for lists
         empty_strings = [""] * (len(interaction_data.interactions) - 1)  # Donde 'n' es el número de cadenas vacías que quieres.
+        subunits_str = ", ".join(sorted(interaction_data.subunits_set))
 
         interactions_data = pd.DataFrame({
             "id": range(1, len(interaction_data.interactions) + 1),
             "interactions": interaction_data.interactions,
             "colors": interaction_data.colors,
-            "ligand": ["Considered" if interaction_data.ligand else "Not considered"] + empty_strings,
+            "ligand": ["True" if interaction_data.ligand else "False"] + empty_strings,
             "mode": [interaction_data.mode] + empty_strings,
-            "protein": ["Considered" if interaction_data.protein else "Not considered"] + empty_strings,
-            "subunit": ["Considered" if interaction_data.subunit else "Not considered"] + empty_strings
+            "protein": ["True" if interaction_data.protein else "False"] + empty_strings,
+            "subunit": ["True" if interaction_data.subunit else "False" + f" ({subunits_str})"] + empty_strings
         })
 
         # Save to an Excel file with two sheets
