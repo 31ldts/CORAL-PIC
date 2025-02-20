@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import operator
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 
 ###########
 # Globals #
@@ -90,6 +92,18 @@ class InteractionData:
         self.mode = mode
         self.protein = protein
         self.subunit = subunit
+
+    def compare(self, other):
+        # En lugar de isinstance, verificamos que tenga los mismos atributos
+        if not hasattr(other, "__dict__"):
+            return "Invalid comparison. The object does not has the espected attributes."
+
+        differences = {}
+        for attr in vars(self):  # Obtener todos los atributos del objeto
+            if getattr(self, attr) != getattr(other, attr):
+                differences[attr] = (getattr(self, attr), getattr(other, attr))
+
+        return differences if differences else "There are no changes."
 
 class AnalyzeInteractions:
 
@@ -1481,10 +1495,14 @@ class AnalyzeInteractions:
                 plt.figure(figsize=(14, 9))
                 sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax, cbar_kws={"ticks": np.linspace(vmin, vmax, num=6)})
 
-                if num_heatmaps == 1:
-                    plt.title(f"{title}")
+                # if title ends with '(/)', it will not be displayed in the heatmap
+                if title.endswith("(/)"):
+                    title = title[:-3]
                 else:
-                    plt.title(f"{title} (Columns {start_col + 1}-{end_col})")
+                    if num_heatmaps == 1:
+                        plt.title(f"{title}")
+                    else:
+                        plt.title(f"{title} (Columns {start_col + 1}-{end_col})")
 
                 plt.xlabel(x_label)
                 plt.ylabel(y_label)
@@ -1597,7 +1615,7 @@ class AnalyzeInteractions:
                     max_y_values.append(max(sum(col) for col in zip(*split_group)))
                 else:
                     # Safely slice data based on start and end
-                    split_data.append((data[0][start:end], data[1][start:end]))
+                    split_data.append((data[start:end]))
                     max_y_values.append(max(split_data[-1][1]))
 
             global_max_y = max(max_y_values)
@@ -1668,7 +1686,7 @@ class AnalyzeInteractions:
                 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
                 max_y = max([sum(col) for col in data])
             else:
-                data = self.sort_matrix(matrix, axis, count=True)
+                data = self.sort_matrix(interaction_data, axis, count=True)
                 ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
                 max_y = max(data[1])
 
@@ -1935,6 +1953,18 @@ class AnalyzeInteractions:
             # Second sheet: Interactions & Attributes
             # Write interactions and colors
             interactions_data.to_excel(writer, sheet_name='Attributes', index=False, startrow=0)
+
+        # Aplicar colores de fondo a la columna "colores"
+        wb = load_workbook(file_path)
+        ws = wb["Attributes"]
+
+        col_index = 3  # Columna "colores" (1-based index en Excel)
+
+        for row_idx, color_hex in enumerate(interaction_data.colors, start=2):  # Empieza en la fila 2 (saltando el header)
+            fill = PatternFill(start_color=color_hex.replace("#", ""), end_color=color_hex.replace("#", ""), fill_type="solid")
+            ws.cell(row=row_idx, column=col_index).fill = fill
+
+        wb.save(file_path)
 
         print(f"Interaction data successfully saved to {file_path}")
 

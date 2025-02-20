@@ -1,15 +1,17 @@
 .vscode/
-outputs/
+output/
 tests/
 tests_support_files/
 diferencias.py
 diferencias/
 input/
 docs/
+otros/
 ejemplos.py
 eliminar.py
 requirements.txt
-tests.py 
+tests.py
+version_check.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
