@@ -12,6 +12,8 @@ eliminar.py
 requirements.txt
 tests.py
 version_check.py
+_comparison.txt
+version_output/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

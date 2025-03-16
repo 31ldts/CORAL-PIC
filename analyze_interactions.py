@@ -123,6 +123,9 @@ class AnalyzeInteractions:
     COUNT = "count"
     PERCENT = "percent"
 
+    MAIN = "<main>"
+    SIDE = "<side>"
+
     def __init__(self):
         """Initializes the class with the current working directory and default settings."""
         self.saving_directory = os.getcwd()  # Set the default saving directory
@@ -979,7 +982,8 @@ class AnalyzeInteractions:
             variable_names=['interaction_data', 'interactions', 'save']
         )
 
-        matrix = interaction_data.matrix
+        data = copy.deepcopy(interaction_data)
+        matrix = data.matrix
 
         # Validate that the matrix has appropriate dimensions
         self._verify_dimensions(matrix=matrix)
@@ -987,16 +991,13 @@ class AnalyzeInteractions:
         # Validate that the interaction list contains valid values
         validate_list(interactions=interactions)
 
-        # Create a deep copy of the matrix to avoid modifying the original
-        filtered = copy.deepcopy(matrix)
-
         # Track whether any interactions were filtered
         changes = False
 
         # Iterate through each cell in the matrix (skipping the header row/column)
-        for i in range(1, len(filtered)):
-            for j in range(1, len(filtered[i])):
-                cell = filtered[i][j]
+        for i in range(1, len(matrix)):
+            for j in range(1, len(matrix[i])):
+                cell = matrix[i][j]
                 
                 # If the cell is not empty ('-'), process it
                 if is_not_empty_or_dash(cell):
@@ -1015,19 +1016,19 @@ class AnalyzeInteractions:
                             changes = True
                     
                     # Update the cell with the filtered sections or set it to '-' if empty
-                    filtered[i][j] = cell if cell != '' else EMPTY_DASH_CELL
+                    matrix[i][j] = cell if cell != '' else EMPTY_DASH_CELL
         
         # If no changes were made, raise an error indicating no matching interactions were found
         if not changes:
             raise ValueError("No matching interactions were found in the matrix.")
 
-        interaction_data.matrix = filtered
+        data.matrix = matrix
 
         # Save the filtered matrix to a file if a save path is provided
         if save:
-            self.save_interaction_data(interaction_data=interaction_data, filename=save)
+            self.save_interaction_data(interaction_data=data, filename=save)
 
-        return interaction_data
+        return data
 
     def filter_by_subunit(self,
             interaction_data: InteractionData, 
@@ -1072,40 +1073,38 @@ class AnalyzeInteractions:
             variable_names=['interaction_data', 'subunits', 'save']
         )
 
-        matrix = interaction_data.matrix
+        data = copy.deepcopy(interaction_data)
+        matrix = data.matrix
 
         # Validate the dimensions of the matrix
         self._verify_dimensions(matrix=matrix)
 
-        # Create a deep copy of the matrix to avoid modifying the original
-        filtered = copy.deepcopy(matrix)
-
         # Determine the axis of residues in the matrix
-        axis = self._get_residues_axis(matrix=filtered)
+        axis = self._get_residues_axis(matrix=matrix)
 
         # Transpose the matrix if the axis is columns
         if axis == "columns":
-            filtered = self.transpose_matrix(filtered)
+            matrix = self.transpose_matrix(matrix)
         
         # Determine whether the matrix contains residues or interactions
-        subunitsLocation = get_subunits_location(matrix=filtered)
+        subunitsLocation = get_subunits_location(matrix=matrix)
 
         # Initialize change tracking variables
         changes = 0
 
         # Filter based on residue locations
         if subunitsLocation == 'residues':
-            for index in range(1, len(filtered)):
-                sections = filtered[index - changes][0].split("-")
+            for index in range(1, len(matrix)):
+                sections = matrix[index - changes][0].split("-")
                 # Remove rows without valid sections or subunits
                 if len(sections) != 2 or sections[1] not in subunits:
-                    filtered.pop(index - changes)
+                    matrix.pop(index - changes)
                     changes += 1
         else:
             # Iterate through each cell in the matrix to filter interactions
-            for i in range(1, len(filtered)):
-                for j in range(1, len(filtered[i])):
-                    cell = filtered[i][j]
+            for i in range(1, len(matrix)):
+                for j in range(1, len(matrix[i])):
+                    cell = matrix[i][j]
                     
                     # Process non-empty cells
                     if is_not_empty_or_dash(cell=cell):
@@ -1136,21 +1135,21 @@ class AnalyzeInteractions:
                                         
                         # Update the cell with filtered interactions
                         cell = cell[:-2]  # Remove trailing comma and space
-                        filtered[i][j] = cell if cell else EMPTY_DASH_CELL
+                        matrix[i][j] = cell if cell else EMPTY_DASH_CELL
 
         # Transpose the matrix back if it was originally in columns
         if axis == "columns":
-            filtered = self.transpose_matrix(filtered)
+            matrix = self.transpose_matrix(matrix)
 
-        interaction_data.matrix = filtered
+        data.matrix = matrix
 
         # Save the filtered matrix to a file if a save path is provided
         if save:
-            self.save_interaction_data(interaction_data=interaction_data, filename=save)
+            self.save_interaction_data(interaction_data=data, filename=save)
 
-        return interaction_data
+        return data
 
-    def filter_chain(self, 
+    def filter_by_chain(self, 
         interaction_data: InteractionData, 
         chain: str = None, 
         subpocket_path: str = None, 
@@ -1503,6 +1502,12 @@ class AnalyzeInteractions:
                 tagMin = f"{vmin:.1f}"
                 tagMax = f"{vmax:.1f}"
 
+            # if title ends with '(/)', it will not be displayed in the heatmap
+            display = True
+            if title.endswith("(/)"):
+                title = title[:-3]
+                display = False
+
             for i in range(num_heatmaps):
                 start_col = i * cols_per_heatmap
                 end_col = min((i + 1) * cols_per_heatmap, num_cols)
@@ -1512,9 +1517,7 @@ class AnalyzeInteractions:
                 sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax, cbar_kws={"ticks": np.linspace(vmin, vmax, num=6)})
 
                 # if title ends with '(/)', it will not be displayed in the heatmap
-                if title.endswith("(/)"):
-                    title = title[:-3]
-                else:
+                if display:
                     if num_heatmaps == 1:
                         plt.title(f"{title}")
                     else:
@@ -1531,7 +1534,8 @@ class AnalyzeInteractions:
                     plt.savefig(filename)
                     plt.close()
 
-        matrix = interaction_data.matrix
+        data = copy.deepcopy(interaction_data)
+        matrix = data.matrix
 
         self.set_config(interaction_data=interaction_data)
 
@@ -1880,7 +1884,8 @@ class AnalyzeInteractions:
             variable_names=['interaction_data', 'save']
         )
 
-        matrix = interaction_data.matrix
+        data = copy.deepcopy(interaction_data)
+        matrix = data.matrix
 
         self._verify_dimensions(matrix=matrix)
 
@@ -1893,12 +1898,12 @@ class AnalyzeInteractions:
         # Transpose back to restore original format
         matrix = self.transpose_matrix(matrix)
 
-        interaction_data.matrix = matrix
+        data.matrix = matrix
 
         if save:
-            self.save_interaction_data(interaction_data=interaction_data, filename=save)
+            self.save_interaction_data(interaction_data=data, filename=save)
         
-        return interaction_data
+        return data
     
     def save_interaction_data(
             self,
@@ -2093,7 +2098,8 @@ class AnalyzeInteractions:
             variable_names=['interaction_data', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'residue_chain', 'save']
         )
 
-        matrix = interaction_data.matrix
+        data = copy.deepcopy(interaction_data)
+        matrix = data.matrix
 
         self._verify_dimensions(matrix=matrix)
 
@@ -2155,12 +2161,12 @@ class AnalyzeInteractions:
         if axis == 'columns':
             selection = self.transpose_matrix(selection)
 
-        interaction_data.matrix = selection
+        data.matrix = selection
 
         if save:
-            self.save_interaction_data(interaction_data=interaction_data, filename=save)
+            self.save_interaction_data(interaction_data=data, filename=save)
 
-        return interaction_data
+        return data
     
     def transpose_matrix(
             self, 
