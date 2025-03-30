@@ -58,8 +58,9 @@ ARPEGGIO_TYPE = [
 
 # Colors associated with Arpeggio interaction types
 ARPEGGIO_COLORS = [
-    "#ff6384", "#36a2eb", "#ffce56", "#4bc0c0", "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-    "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#ff9da7", "#1a9ceb", "#fdca52"
+    "#e6194B", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4",
+    "#46f0f0", "#f032e6", "#bcf60c", "#fabebe", "#008080", "#e6beff",
+    "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000"
 ]
 
 # Constants for delimiters used in interaction data representation
@@ -1706,9 +1707,15 @@ class AnalyzeInteractions:
                 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
                 max_y = max([sum(col) for col in data])
             else:
-                data = self.sort_matrix(interaction_data, axis, count=True)
-                ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
-                max_y = max(data[1])
+                if type_count:
+                    data = self.sort_matrix(interaction_data, axis, count=type_count)
+                    ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
+                    max_y = max(data[1])
+                else:
+                    for i in range(len(data)):
+                        data[i] = sum(data[i])
+                    ax.bar(indices, data, color=colors[0] if len(colors) > 0 else None)
+                    max_y = max(data)
 
             ax.set_ylim(0, max_y * 1.1)
             ax.set_xticks(range(len(indices)))
