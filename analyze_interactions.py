@@ -615,7 +615,15 @@ class AnalyzeInteractions:
             # Check if the interaction already exists and add atoms to the corresponding interaction
             for index, segment in enumerate(content):
                 if index % 2 == 0 and interaction_code == segment.strip():
-                    content[index + 1] += f"{SAME_DELIM}{atoms}"
+                    # Delete repate entries
+                    entries = content[index + 1].split(SAME_DELIM)
+                    detected = False
+                    for entry in entries:
+                        if entry == atoms:
+                            detected = True
+                            break
+                    if not detected:
+                        content[index + 1] += f"{SAME_DELIM}{atoms}"
                     exists = True
                     break
 
@@ -837,7 +845,7 @@ class AnalyzeInteractions:
                             residue = sections[0]
                             subunits_set.add(sections[1])
 
-                        atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip()
+                        atoms = f"{elements[1].strip()}-{elements[4].strip()}" if protein and ligand else elements[1].strip() if protein else elements[4].strip() if ligand else ""
                         if not subunit:
                             atoms += f"({sections[1]})"
 
@@ -879,7 +887,7 @@ class AnalyzeInteractions:
                     lig_atom = lig["auth_atom_id"]
                     
                     subunits_set.add(prot_subunit)
-                    atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom
+                    atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom if ligand else ""
 
                     if subunit:
                         residue += "-" + prot_subunit
