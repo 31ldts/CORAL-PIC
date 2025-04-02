@@ -755,7 +755,7 @@ class AnalyzeInteractions:
             else: 
                 return None, None
 
-        def validate_file(filename):
+        def validate_file(filename, mode):
             """
             Checks if a filename is valid (i.e., contains no spaces).
 
@@ -765,7 +765,18 @@ class AnalyzeInteractions:
             Returns:
                 bool: True if the filename is valid, False otherwise.
             """
-            return True if filename.count(' ') == 0 else False
+            if filename.count(' ') != 0:
+                print(f"Warning: The filename '{filename}' contains spaces.")
+                return False
+            if mode == self.ICHEM:
+                if filename.split('.')[-1] != 'txt':
+                    print(f"Warning: The filename '{filename}' is not a valid IChem file.")
+                    return False
+            elif mode == self.ARPEGGIO:
+                if filename.split('.')[-1] != 'json':
+                    print(f"Warning: The filename '{filename}' is not a valid Arpeggio file.")
+                    return False
+            return True
         
         def check_directory(directory):
             """
@@ -900,27 +911,26 @@ class AnalyzeInteractions:
         for index, file in enumerate(files):
             file_path = os.path.join(directory, file)
 
-            if os.path.isfile(file_path) and validate_file(file):
+            if os.path.isfile(file_path) and validate_file(file, mode):
                 content = read_file(file_path)
-                if mode == 'ichem':
+                if mode == self.ICHEM:
                     matrix, aa, cont, subunits_set = ichem_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
-                elif mode == 'arpeggio':
+                    ligands[index] = file.replace(".txt", "")
+                elif mode == self.ARPEGGIO:
                     matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
-                else:
-                    raise Exception
+                    files[index] = file.replace(".json", "")
+                    ligands[index] = ligand_code
+            
             else:
                 failed_files.append(file_path)
-            if mode == 'ichem':
-                ligands[index] = file.replace(".txt", "")
-            elif mode == 'arpeggio':
-                files[index] = file.replace(".json", "")
-                ligands[index] = ligand_code
-        if mode == 'ichem':
+                
+        if mode == self.ICHEM:
             files = None       
                 
         if len(failed_files) > 0:
-            raise InvalidFilenameException(failed_files)
-
+            files = [f for f in files if f not in failed_files]
+            ligands = [l for l in ligands if l is not None]
+        
         if not subunit:
             matrix = adjust_subunits(matrix=matrix)
         matrix = sort_interactions(matrix=matrix)
@@ -1337,6 +1347,29 @@ class AnalyzeInteractions:
 
         return filtered_data
 
+    def get_dataframe(self, interaction_data: InteractionData) -> pd.DataFrame:
+        """
+        Converts the interaction matrix into a pandas DataFrame.
+
+        Args:
+            interaction_data (InteractionData): The object containing the interaction matrix.
+
+        Returns:
+            pd.DataFrame: A DataFrame representation of the interaction matrix.
+        """
+        # Validate the type of interaction_data
+        self._check_variable_types(
+            variables=[interaction_data],
+            expected_types=[InteractionData],
+            variable_names=['interaction_data']
+        )
+
+        # Convert the matrix to a DataFrame and set the index and columns
+        df = pd.DataFrame(interaction_data.matrix[1:], columns=interaction_data.matrix[0])
+        df.set_index(df.columns[0], inplace=True)
+
+        return df
+
     def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, save: bool = False):
         """
         Generates a heatmap based on interaction data using different processing modes.
@@ -1515,7 +1548,18 @@ class AnalyzeInteractions:
                 df_subset = df.iloc[:, start_col:end_col]
 
                 plt.figure(figsize=(14, 9))
-                sns.heatmap(df_subset, annot=True, cmap=self.heat_colors, fmt=".0f" if mode == 'count' else ".1f", vmin=vmin, vmax=vmax, cbar_kws={"ticks": np.linspace(vmin, vmax, num=6)})
+                sns.heatmap(df_subset, 
+                            annot=True,
+                            linewidths=0.5, 
+                            linecolor='lightgrey',
+                            cmap=self.heat_colors, 
+                            fmt=".0f" if mode == 'count' else ".1f", 
+                            vmin=vmin, 
+                            vmax=vmax, 
+                            cbar_kws={
+                                "ticks": np.linspace(vmin, vmax, num=6),
+                                "format": "%.0f" if mode == 'count' else "%.1f"
+                            })
 
                 # if title ends with '(/)', it will not be displayed in the heatmap
                 if display:
@@ -1992,6 +2036,17 @@ class AnalyzeInteractions:
         for row_idx, color_hex in enumerate(interaction_data.colors, start=2):  # Starts on row 2 (skipping the header)
             fill = PatternFill(start_color=color_hex.replace("#", ""), end_color=color_hex.replace("#", ""), fill_type="solid")
             ws.cell(row=row_idx, column=col_index).fill = fill
+
+        for col in ws.columns:
+            max_length = 0
+            col_letter = col[0].column_letter  # Obtener la letra de la columna
+            for cell in col:
+                try:
+                    if cell.value:
+                        max_length = max(max_length, len(str(cell.value)))
+                except:
+                    pass
+            ws.column_dimensions[col_letter].width = max_length + 2  # Añadir un poco de espacio extra
 
         wb.save(file_path)
 
