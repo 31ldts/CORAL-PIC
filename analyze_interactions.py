@@ -1398,6 +1398,25 @@ class AnalyzeInteractions:
 
         return df
 
+    def get_interactions(self, interaction_data: InteractionData) -> list[str]:
+        """
+        Retrieves the interaction labels from the InteractionData object.
+
+        Args:
+            interaction_data (InteractionData): The object containing the interaction matrix.
+
+        Returns:
+            list[str]: A list of interaction labels.
+        """
+        # Validate the type of interaction_data
+        self._check_variable_types(
+            variables=[interaction_data],
+            expected_types=[InteractionData],
+            variable_names=['interaction_data']
+        )
+
+        return interaction_data.interactions
+    
     def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, font: str = None, save: bool = False):
         """
         Generates a heatmap based on interaction data using different processing modes.
