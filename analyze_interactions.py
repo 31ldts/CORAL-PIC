@@ -127,6 +127,9 @@ class AnalyzeInteractions:
     MAIN = "<main>"
     SIDE = "<side>"
 
+    LOWER = "lower"
+    UPPER = "upper"
+
     def __init__(self):
         """Initializes the class with the current working directory and default settings."""
         self.saving_directory = os.getcwd()  # Set the default saving directory
@@ -304,6 +307,23 @@ class AnalyzeInteractions:
             plt.savefig(os.path.join(self.saving_directory, plot_name + '.png'))
             plt.close(fig)  # Close the figure after saving to avoid display overlap
 
+    def _verify_font(self, font: str) -> str:
+        """
+        Verifies the font parameter for heatmap visualization.
+
+        Args:
+            font (str): The font type to verify.
+
+        Returns:
+            str: The verified font type.
+
+        Raises:
+            ValueError: If the font is not recognized.
+        """
+        if font not in [self.LOWER, self.UPPER, None]:
+            raise ValueError(f"Invalid font '{font}'. Expected 'lower', 'upper' or None.")
+        return font
+    
     #################################
     # Public Methods: Configuration #
     #################################
@@ -1370,7 +1390,7 @@ class AnalyzeInteractions:
 
         return df
 
-    def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, save: bool = False):
+    def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, font: str = None, save: bool = False):
         """
         Generates a heatmap based on interaction data using different processing modes.
 
@@ -1502,7 +1522,7 @@ class AnalyzeInteractions:
                 data[residue] = [np.nan for _ in range(len(self.interaction_labels))]
             return data, self.transpose_matrix(interaction_data=matrix)
 
-        def plot_heatmap(self, data, title, x_label, y_label, mode, min_v, max_v, save):
+        def plot_heatmap(self, data, title, x_label, y_label, mode, min_v, max_v, save, font):
             """
             Creates and optionally saves the heatmap visualization.
 
@@ -1519,7 +1539,7 @@ class AnalyzeInteractions:
             Returns:
                 None: Displays the heatmap or saves it to a file.
             """
-            df = pd.DataFrame(data, index=self.interaction_labels)
+            df = pd.DataFrame(data, index=self.interaction_labels if font == None else [elemento.upper() for elemento in self.interaction_labels] if font == "upper" else [elemento.lower() for elemento in self.interaction_labels])
             max_cols = self.heat_max_cols  # Maximum number of columns per heatmap
             num_cols = len(df.columns)
 
@@ -1579,6 +1599,8 @@ class AnalyzeInteractions:
                     plt.savefig(filename)
                     plt.close()
 
+        self._verify_font(font=font)
+
         data = copy.deepcopy(interaction_data)
         matrix = data.matrix
 
@@ -1595,7 +1617,7 @@ class AnalyzeInteractions:
         data = process_matrix(matrix=matrix, mode=mode)
 
         # Generate and display/save the heatmap
-        plot_heatmap(self=self, data=data, title=title, x_label=x_label, y_label=y_label, mode=mode, min_v=min_v, max_v=max_v, save=save)
+        plot_heatmap(self=self, data=data, title=title, x_label=x_label, y_label=y_label, mode=mode, min_v=min_v, max_v=max_v, save=save, font=font)
 
     def bar_chart(self,
         interaction_data: InteractionData,
@@ -1607,7 +1629,8 @@ class AnalyzeInteractions:
         stacked: bool = False,
         save: bool = False,
         colors: list[str] = None,
-        type_count: bool = False
+        type_count: bool = False,
+        font: str = None
     ) -> None:
         """
         Generates a bar chart based on interaction data.
@@ -1642,6 +1665,8 @@ class AnalyzeInteractions:
         Raises:
             ValueError: If `axis` is not 'rows' or 'columns'.
         """
+
+        self._verify_font(font=font)
 
         matrix = interaction_data.matrix
         self.set_config(interaction_data=interaction_data)
@@ -1745,7 +1770,8 @@ class AnalyzeInteractions:
                 bars = []
                 bottoms = [0] * len(indices)
                 for index, group in enumerate(transposed_data):
-                    bars.append(ax.bar(indices, group, bottom=bottoms, label=self.interaction_labels[index], color=colors[index]))
+                    label = self.interaction_labels[index] if font is None else self.interaction_labels[index].upper() if font == "upper" else self.interaction_labels[index].lower()
+                    bars.append(ax.bar(indices, group, bottom=bottoms, label=label, color=colors[index]))
                     bottoms = [i + j for i, j in zip(bottoms, group)]
 
                 ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), ncol=1)
@@ -1791,7 +1817,8 @@ class AnalyzeInteractions:
         axis: str,
         save: bool = False,
         colors: list[str] = None,
-        type_count: bool = False
+        type_count: bool = False,
+        font: str = None
     ) -> None:
         """
         Generates a pie chart based on interaction data.
@@ -1828,7 +1855,7 @@ class AnalyzeInteractions:
                 for i, (label, total) in enumerate(zip(self.interaction_labels, total_interactions))
                 if total > 0]
 
-        def _plot_pie_chart(labels: list[str], sizes: list[int], colors: list[str], total_interactions: list[int]) -> None:
+        def _plot_pie_chart(labels: list[str], sizes: list[int], colors: list[str], total_interactions: list[int], font: str) -> None:
             """
             Creates and formats a pie chart.
 
@@ -1850,7 +1877,7 @@ class AnalyzeInteractions:
             # Calculate percentages and create legend
             total = sum(total_interactions)
             legend_labels = [
-                f"{label} ({round(count / total * 100, 2)}%)"
+                f"{label if font is None else label.upper() if font == 'upper' else label.lower()} ({round(count / total * 100, 2)}%)"
                 for label, count in zip(self.interaction_labels, total_interactions)
                 if count != 0
             ]
@@ -1872,6 +1899,7 @@ class AnalyzeInteractions:
                 return zip(*non_zero_interactions)  # Separates into labels, sizes, and colors
             return [], [], []
         
+        self._verify_font(font=font)
         self.set_config(interaction_data=interaction_data)
         matrix = interaction_data.matrix
         # Initialize plotting parameters and data
@@ -1881,9 +1909,9 @@ class AnalyzeInteractions:
         total_interactions = [sum(transposed_data[i]) for i in range(len(transposed_data))]
         non_zero_interactions = _filter_non_zero_interactions(total_interactions, colors)
         labels_pie, sizes, pie_colors = _prepare_pie_chart_data(non_zero_interactions)
-
+        
         # Plot the pie chart
-        fig = _plot_pie_chart(labels_pie, sizes, pie_colors, total_interactions)
+        fig = _plot_pie_chart(labels_pie, sizes, pie_colors, total_interactions, font)
 
         # Show or save the plot
         self._plot_end(save, plt, fig, plot_name)
