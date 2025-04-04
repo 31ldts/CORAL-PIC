@@ -17,6 +17,8 @@ from openpyxl.styles import PatternFill
 # Globals #
 ###########
 
+__version__ = "0.0.6"
+
 # Labels for different types of molecular interactions
 INTERACTION_LABELS = [
     "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
@@ -1440,6 +1442,7 @@ class AnalyzeInteractions:
             y_label (str, optional): Label for the y-axis. Defaults to an empty string.
             min_v (int, optional): Minimum value for the heatmap color scale. Defaults to None (auto-scaling).
             max_v (int, optional): Maximum value for the heatmap color scale. Defaults to None (auto-scaling).
+            font (str, optional): Font style for the heatmap labels. Can be 'upper', 'lower', or None. Defaults to None.
             save (bool, optional): If True, saves the heatmap instead of displaying it. Defaults to False.
 
         Returns:
@@ -1685,6 +1688,7 @@ class AnalyzeInteractions:
             save (bool, optional): If True, saves the chart as a PNG file. Defaults to False.
             colors (list[str], optional): List of colors for interaction types. Defaults to None.
             type_count (bool, optional): If True, counts the occurrences of each interaction type. Defaults to False.
+            font (str, optional): Font style for the plot leyend. Can be 'upper', 'lower', or None. Defaults to None.
 
         Returns:
             None: The function either displays or saves the plot.
@@ -1862,6 +1866,7 @@ class AnalyzeInteractions:
             colors (list[str], optional): List of colors for interaction types. Defaults to None.
             type_count (bool, optional): If True, counts the occurrences of each interaction type instead of 
                                         using interaction values. Defaults to False.
+            font (str, optional): Font style for the plot leyend. Can be 'upper', 'lower', or None. Defaults to None.
 
         Returns:
             None: The function either displays or saves the plot.
@@ -2311,26 +2316,24 @@ class AnalyzeInteractions:
         
         self._check_variable_types(
             variables=[interaction_data, save], 
-            expected_types=[(InteractionData, list), (str, None.__class__)], 
+            expected_types=[InteractionData, (str, None.__class__)], 
             variable_names=['interaction_data', 'save']
         )
 
-        matrix = interaction_data.matrix if isinstance(interaction_data, InteractionData) else interaction_data
+        data = copy.deepcopy(interaction_data)
+        matrix = data.matrix
 
         self._verify_dimensions(matrix=matrix)
 
         # Transpose the matrix using list comprehension
         transposed = [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
-        if isinstance(interaction_data, InteractionData):
-            interaction_data.matrix = transposed
-        else:
-            interaction_data = transposed
+        data.matrix = transposed
 
         if save:
-            self.save_interaction_data(interaction_data=interaction_data, filename=save)
+            self.save_interaction_data(interaction_data=data, filename=save)
 
-        return interaction_data
+        return data
 
 ##############
 # Exceptions #
