@@ -14,6 +14,7 @@ tests.py
 version_check.py
 _comparison.txt
 version_output/
+main.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -17,8 +17,6 @@ from openpyxl.styles import PatternFill
 # Globals #
 ###########
 
-__version__ = "0.0.6"
-
 # Labels for different types of molecular interactions
 INTERACTION_LABELS = [
     "Hydrophobic", "Aromatic_Face/Face", "Aromatic_Edge/Face", "HBond_PROT", "HBond_LIG", 
