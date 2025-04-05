@@ -552,7 +552,7 @@ class AnalyzeInteractions:
                     except:
                         raise ValueError(f"The CSV file '{activity_file}' is missing a header.")
                     for key, value in csvreader:
-                        data_dict[key] = str(round(float(value), 3))
+                        data_dict[key.upper()] = str(round(float(value), 3))
 
                 if not data_dict:
                     raise ValueError(f"The CSV file '{activity_file}' must contain at least one row of data.")
@@ -570,7 +570,7 @@ class AnalyzeInteractions:
             else:
                 for i in range(1, len(columns)):
                     drug_name = columns[i]
-                    columns[i] = f"{drug_name} (0)"
+                    columns[i] = f"{drug_name}"
 
             # Insert headers into the matrix
             matrix.insert(0, columns)
@@ -943,10 +943,10 @@ class AnalyzeInteractions:
                 content = read_file(file_path)
                 if mode == self.ICHEM:
                     matrix, aa, cont, subunits_set = ichem_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
-                    ligands[index] = file.replace(".txt", "")
+                    ligands[index] = file.replace(".txt", "").upper()
                 elif mode == self.ARPEGGIO:
                     matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
-                    files[index] = file.replace(".json", "")
+                    files[index] = file.replace(".json", "").upper()
                     ligands[index] = ligand_code
             
             else:
@@ -1451,7 +1451,7 @@ class AnalyzeInteractions:
             HeatmapActivityException: If the matrix contains invalid or negative activity values.
         """
 
-        def validate_and_prepare_matrix(matrix: list[list[str]]):
+        def validate_and_prepare_matrix(matrix: list[list[str]], mode:str):
             """
             Validates the input matrix and prepares it for processing.
             
@@ -1469,10 +1469,14 @@ class AnalyzeInteractions:
             """
             if self._get_residues_axis == 'columns':
                 matrix = self.transpose_matrix(matrix)
-            for ligand in matrix[0][1:]:
-                activity = ligand.split('(')[-1].replace(")", "")
-                if float(activity) < 0.0:
-                    raise HeatmapActivityException
+            if mode in ["min", "max", "mean"]:
+                for ligand in matrix[0][1:]:
+                    activity = ligand.split('(')[-1].replace(")", "")
+                    try:
+                        if float(activity) < 0.0:
+                            raise HeatmapActivityException
+                    except ValueError:
+                        raise MissedActivityException("The matrix does not contain activity values.")
             return matrix
 
         def process_matrix(matrix: list[list[str]], mode: str) -> dict:
@@ -1492,7 +1496,8 @@ class AnalyzeInteractions:
             op = {"min": operator.lt, "max": operator.gt}.get(mode, None)
 
             for line in matrix[1:]:
-                activity = float(line[0].split('(')[-1].replace(")", ""))
+                if mode in ["min", "max", "mean"]:
+                    activity = float(line[0].split('(')[-1].replace(")", ""))
                 for index in range(1, len(line)):
                     residue = matrix[0][index].split('-')[0]
                     cell = line[index]
@@ -1635,7 +1640,7 @@ class AnalyzeInteractions:
         self.set_config(interaction_data=interaction_data)
 
         # Validate and prepare the matrix
-        matrix = validate_and_prepare_matrix(matrix=matrix)
+        matrix = validate_and_prepare_matrix(matrix=matrix, mode=mode)
 
         # Ensure the mode is valid
         if mode not in HEATMAP_MODES:
@@ -2263,7 +2268,12 @@ class AnalyzeInteractions:
         elif thr_interactions is not None:
             reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True) if value >= thr_interactions]
         elif self._get_residues_axis(matrix) == "columns" and thr_activity is not None:
+            try:
+                float(matrix[1][0].split(" (")[1].replace(")", ""))
+            except Exception:
+                raise MissedActivityException("The matrix does not contain activity values.")
             reactives = [key for key, value in sorted(reactives.items(), key=lambda item: float(matrix[item[0]][0].split(" (")[1].replace(")", "")), reverse=True) if float(matrix[key][0].split(" (")[1].replace(")", "")) >= thr_activity]
+
         elif selected_items:
             selected_items = min(selected_items, len(matrix))
             reactives = [key for key, value in sorted(reactives.items(), key=lambda item: item[1], reverse=True)[:selected_items]]
@@ -2314,20 +2324,23 @@ class AnalyzeInteractions:
         
         self._check_variable_types(
             variables=[interaction_data, save], 
-            expected_types=[InteractionData, (str, None.__class__)], 
+            expected_types=[(InteractionData, list), (str, None.__class__)], 
             variable_names=['interaction_data', 'save']
         )
 
         data = copy.deepcopy(interaction_data)
-        matrix = data.matrix
+        matrix = data.matrix if isinstance(interaction_data, InteractionData) else copy.deepcopy(data)
 
         self._verify_dimensions(matrix=matrix)
 
         # Transpose the matrix using list comprehension
         transposed = [[row[i] for row in matrix] for i in range(len(matrix[0]))]
 
-        data.matrix = transposed
-
+        if isinstance(interaction_data, InteractionData):
+             data.matrix = transposed
+        else:
+             data = transposed
+        
         if save:
             self.save_interaction_data(interaction_data=data, filename=save)
 
@@ -2366,8 +2379,8 @@ class InvalidColorException(Exception):
         super().__init__(self.message)
 
 class InvalidFileExtensionException(Exception):
-    """Exception raised when the file extension is not .csv."""
-    def __init__(self, filename, message="Invalid file extension. Only '.csv' files are allowed"):
+    """Exception raised when the file extension is not .xlsx."""
+    def __init__(self, filename, message="Invalid file extension. Only '.xlsx' files are allowed"):
         self.filename = filename
         self.message = f"{message}: '{filename}'"
         super().__init__(self.message)
@@ -2399,4 +2412,10 @@ class InvalidModeException(Exception):
     """Exception raised for invalid mode values."""
     def __init__(self, mode, expected_values):
         self.message = f"Invalid mode value: '{mode}'. Expected:{expected_values}"
+        super().__init__(self.message)
+
+class MissedActivityException(Exception):
+    """Exception raised when activity values are not found in the matrix."""
+    def __init__(self, message):
+        self.message = message
         super().__init__(self.message)
