@@ -1936,7 +1936,7 @@ class AnalyzeInteractions:
                 max_y = max([sum(col) for col in data])
             else:
                 if type_count:
-                    data = self.sort_matrix(interaction_data, axis, count=type_count)
+                    data = self.sort_matrix(interaction_data, axis, _count=type_count)
                     ax.bar(data[0], data[1], color=colors[0] if len(colors) > 0 else None)
                     max_y = max(data[1])
                 else:
@@ -2245,7 +2245,7 @@ class AnalyzeInteractions:
         thr_interactions: int = None,
         thr_activity: float = None,
         selected_items: int = None,
-        count: bool = False,
+        _count: bool = False,
         residue_chain: bool = False,
         save: str = None
     ) -> InteractionData:
@@ -2342,7 +2342,7 @@ class AnalyzeInteractions:
             return sorted_matrix
 
         self._check_variable_types(
-            variables=[interaction_data, axis, thr_interactions, thr_activity, selected_items, count, residue_chain, save], 
+            variables=[interaction_data, axis, thr_interactions, thr_activity, selected_items, _count, residue_chain, save], 
             expected_types=[InteractionData, str, (int, None.__class__), (float, None.__class__), (int, None.__class__), bool, bool, (str, None.__class__)], 
             variable_names=['interaction_data', 'axis', 'thr_interactions', 'thr_activity', 'selected_items', 'count', 'residue_chain', 'save']
         )
@@ -2380,7 +2380,7 @@ class AnalyzeInteractions:
                 reactives[row] = reactives.get(row, 0) + interactions
         
         # If `count` is True, return the interaction counts
-        if count:
+        if _count:
             data = [list(reactives.keys()), list(reactives.values())]
             for index in reactives.keys():
                 original_value = matrix[index][0]
