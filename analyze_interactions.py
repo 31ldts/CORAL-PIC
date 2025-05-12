@@ -234,7 +234,7 @@ class AnalyzeInteractions:
             ValueError: If the matrix is too small or any row is too short.
         """
         if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
-            raise ValueError("The matrix must have at least 2 rows and 2 columns.")
+            raise ValueError("The original/resulting matrix is empty, it must have at least 2 rows and 2 columns.")
 
     def _get_interactions(self, cell: str) -> list[int]:
         """
@@ -1279,7 +1279,7 @@ class AnalyzeInteractions:
                                     
                                     # Remove interactions not in the valid subunits
                                     for interaction in range(len(interactions)):
-                                        if len(interactions[interaction-subchanges].split('(')) > 1 and interactions[interaction - subchanges][-2] not in subunits:
+                                        if len(interactions[interaction-subchanges].split('(')) > 1 and interactions[interaction - subchanges][1:-1] not in subunits:
                                             changes += 1
                                             interactions.pop(interaction - subchanges)
                                             subchanges += 1
@@ -1287,7 +1287,7 @@ class AnalyzeInteractions:
                                     # Rebuild the cell if there are valid interactions
                                     if interactions:
                                         cell += separators[index - 1] + GROUP_DELIM
-                                        cell += SAME_DELIM.join(interactions) + ' ' + GROUP_DELIM + DIFF_DELIM
+                                        cell += SAME_DELIM.join(interactions) + GROUP_DELIM + DIFF_DELIM
                                         
                         # Update the cell with filtered interactions
                         cell = cell[:-2]  # Remove trailing comma and space
@@ -1298,6 +1298,7 @@ class AnalyzeInteractions:
             matrix = self.transpose_matrix(matrix)
 
         data.matrix = matrix
+        data.subunits_set = subunits
 
         # Save the filtered matrix to a file if a save path is provided
         if save:
