@@ -60,7 +60,11 @@ ARPEGGIO_TYPE = [
 ARPEGGIO_COLORS = [
     "#e6194B", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4",
     "#46f0f0", "#f032e6", "#bcf60c", "#fabebe", "#008080", "#e6beff",
-    "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000"
+    "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1", 
+    "#000075", "#808080", "#7fffd4", "#ff7f50", "#6495ed", "#dc143c", 
+    "#9932cc", "#8b008b", "#556b2f", "#ff8c00", "#8fbc8f", "#483d8b",
+    "#2f4f4f", "#00ced1", "#9400d3", "#ff1493", "#1e90ff", "#b22222", 
+    "#228b22", "#daa520", "#4b0082", "#cd5c5c"
 ]
 
 # Constants for delimiters used in interaction data representation
@@ -458,7 +462,8 @@ class AnalyzeInteractions:
                 self.interaction_labels = INTERACTION_LABELS  # Default interaction labels
                 self.plot_colors = COLORS  # Default color configuration
             elif mode == 'arpeggio':
-                self.interaction_labels = ARPEGGIO_CONT + ARPEGGIO_TYPE  # Default interaction labels
+                self.interaction_labels = ARPEGGIO_CONT + ARPEGGIO_TYPE
+                self.interaction_labels.sort(key=lambda s: (s.lower(), s.islower()))
                 self.plot_colors = ARPEGGIO_COLORS  # Default color c
             else:
                 raise InvalidModeException(mode=mode, expected_values=PROGRAM_MODES)
@@ -483,6 +488,7 @@ class AnalyzeInteractions:
         protein: bool = True, 
         ligand: bool = True, 
         subunit: bool = False, 
+        template_file: str = None,
         save: str = None
     ) -> InteractionData:
         """
@@ -865,6 +871,9 @@ class AnalyzeInteractions:
             """
             Processes Arpeggio interaction files, extracting relevant data and updating the matrix.
             """
+            interaction_list = ARPEGGIO_CONT + ARPEGGIO_TYPE
+            interaction_list.sort(key=lambda s: (s.lower(), s.islower()))
+
             # Filter to obtain entries with interacting_entities == INTER
             inter_set = [elem for elem in content if elem["interacting_entities"] in ARPEGGIO_INT_ENT]
             # Filter to obtain entries with the desired contact or type
@@ -904,20 +913,99 @@ class AnalyzeInteractions:
                         matrix.append([""] * len(files))
 
                     for interaction in contact:
-                        matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=ARPEGGIO_CONT+ARPEGGIO_TYPE)
+                        matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=interaction_list)
+
+            return matrix, ligand_code, aa, cont, subunits_set
+        
+        def arpeggio_analysis_template(content, index, files, subunits_set, cont, matrix, aa, template, interaction_list):
+            """
+            Processes Arpeggio interaction files, extracting relevant data and updating the matrix.
+            """
+            def matches_template(entry, template):
+                """
+                Compara una entrada con un template recursivamente.
+                """
+                if isinstance(template, dict):
+                    if not isinstance(entry, dict):
+                        return False
+                    for key, tmpl_val in template.items():
+                        if key not in entry:
+                            return False
+                        if not matches_template(entry[key], tmpl_val):
+                            return False
+                    return True
+                elif isinstance(template, list):
+                    if template is None:
+                        return True
+                    # Aquí asumimos que entry debe ser un valor único que esté en la lista
+                    return any(value in template for value in entry)
+                elif template is None:
+                    return True
+                else:
+                    return entry == template
+
+            # Filter to obtain entries with the desired contact or type
+            for inter in content:
+                for entry in template:
+                    if matches_template(inter, entry):
+                        contact = set()
+                        if type(inter['type']) == list:
+                            for conta in inter['type']:
+                                if conta in interaction_list:
+                                    contact.add(conta)
+                        else:
+                            if inter['type'] in interaction_list:
+                                contact.add(inter['type'])
+                        if type(inter['contact']) == list:
+                            for conta in inter['contact']:
+                                if conta in interaction_list:
+                                    contact.add(conta)
+                        else:
+                            if inter['contact'] in interaction_list:
+                                contact.add(inter['contact'])
+                        prot, lig = get_protein_ligand(begin=inter["bgn"], end=inter["end"])
+                        if prot is not None:
+                            residue = prot["label_comp_id"] + " " + str(prot["auth_seq_id"])
+                            prot_atom = prot["auth_atom_id"]
+                            prot_subunit = prot["auth_asym_id"]
+                            ligand_code = lig["label_comp_id"]
+                            lig_atom = lig["auth_atom_id"]
+                            
+                            subunits_set.add(prot_subunit)
+                            atoms = f"{prot_atom}-{lig_atom}" if protein and ligand else prot_atom if protein else lig_atom if ligand else ""
+
+                            if subunit:
+                                residue += "-" + prot_subunit
+                            else:
+                                atoms += f"({prot_subunit})"
+
+                            if residue not in aa:
+                                aa[residue] = cont
+                                cont += 1
+                            column = aa[residue]
+
+                            # Ensure matrix size and modify cell
+                            if len(matrix) <= column:
+                                matrix.append([""] * len(files))
+
+                            for interaction in contact:
+                                matrix[column][index] = modify_cell(text=matrix[column][index], interaction=interaction, atoms=atoms, interaction_labels=interaction_list)
+                        break                
 
             return matrix, ligand_code, aa, cont, subunits_set
         
         # Validate input types
         self._check_variable_types(
-            variables=[directory, mode, activity_file, protein, ligand, subunit, save],
-            expected_types=[str, str, (str, None.__class__), bool, bool, bool, (str, None.__class__)],
-            variable_names=['directory', 'mode', 'activity_file', 'protein', 'ligand', 'subunit', 'save']
+            variables=[directory, mode, activity_file, protein, ligand, subunit, template_file, save],
+            expected_types=[str, str, (str, None.__class__), bool, bool, bool, (str, None.__class__), (str, None.__class__)],
+            variable_names=['directory', 'mode', 'activity_file', 'protein', 'ligand', 'subunit', 'template_file', 'save']
         )
 
         directory = os.path.join(self.input_directory, directory)
         if activity_file is not None:
             activity_file = os.path.join(self.input_directory, activity_file)
+        if template_file is not None:
+            template_file = os.path.join(self.input_directory, template_file)
 
         # Check the directory and return its files
         files = check_directory(directory=directory)
@@ -934,6 +1022,23 @@ class AnalyzeInteractions:
         cont = 0
         subunits_set = set()
         failed_files = []
+
+        interaction_list = None
+        if template_file is not None:
+            with open(template_file) as f:
+                template = json.load(f)
+            # Get set of interactions from the template
+            interaction_set = set()
+            for entry in template:
+                for field in ('contact', 'type'):
+                    if field in entry and entry[field] is not None:
+                        if isinstance(entry[field], str):
+                            interaction_set.add(entry[field])
+                        else:
+                            for interaction in entry[field]:
+                                interaction_set.add(interaction)
+            interaction_list = list(interaction_set)
+            interaction_list.sort(key=lambda s: (s.lower(), s.islower()))
         
         # Analyze each file in the directory
         for index, file in enumerate(files):
@@ -945,7 +1050,10 @@ class AnalyzeInteractions:
                     matrix, aa, cont, subunits_set = ichem_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
                     ligands[index] = file.replace(".txt", "").upper()
                 elif mode == self.ARPEGGIO:
-                    matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
+                    if template_file is not None:
+                        matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis_template(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa, template=template, interaction_list=interaction_list)
+                    else:
+                        matrix, ligand_code, aa, cont, subunits_set = arpeggio_analysis(content=content, index=index, files=files, subunits_set=subunits_set, cont=cont, matrix=matrix, aa=aa)
                     files[index] = file.replace(".json", "").upper()
                     ligands[index] = ligand_code
             
@@ -963,7 +1071,16 @@ class AnalyzeInteractions:
             matrix = adjust_subunits(matrix=matrix)
         matrix = sort_interactions(matrix=matrix)
         matrix = label_matrix(matrix=matrix, rows=list(aa.keys()), columns=ligands, activity_file=activity_file, correction=files)
-        interaction_data = InteractionData(colors=self.plot_colors, interactions=self.interaction_labels,
+        
+        interactions = interaction_list if interaction_list is not None else self.interaction_labels
+        if len(self.plot_colors) > len(interactions):   
+            colors = self.plot_colors[:len(interactions)]
+        elif len(self.plot_colors) < len(interactions):
+            colors = self.plot_colors + [self.plot_colors[-1]] * (len(interactions) - len(self.plot_colors))
+        else:
+            colors = self.plot_colors.copy()
+
+        interaction_data = InteractionData(colors=colors, interactions=interactions,
                                      ligand=ligand, matrix=matrix, mode=mode, protein=protein, subunit=subunit, subunits_set=subunits_set)
         interaction_data = self.sort_matrix(interaction_data=interaction_data, residue_chain=True)
         # Save the matrix if specified
@@ -992,7 +1109,7 @@ class AnalyzeInteractions:
             ValueError: If the matrix dimensions are invalid, or if no matching interactions are found.
         """
 
-        def validate_list(interactions: list[int]) -> None:
+        def validate_list(interactions: list[int], interaction_labels: list[str]) -> None:
             """
             Validates the interaction list to ensure it contains unique numbers between 1 and 7.
 
@@ -1003,12 +1120,12 @@ class AnalyzeInteractions:
                 ValueError: If any number is outside the range of 1 to 7 or if there are duplicates.
             """
             # Valid interactions are numbers from 1 to 7
-            valid_numbers = set(range(1, len(self.interaction_labels) + 1))
+            valid_numbers = set(range(1, len(interaction_labels) + 1))
 
             # Check if all numbers in the list are within the valid range
             for num in interactions:
                 if num not in valid_numbers:
-                    raise ValueError(f"Invalid interaction: {num}. Must be a number between 1 and 7.")
+                    raise ValueError(f"Invalid interaction: {num}. Must be a number between {min(valid_numbers)} and {max(valid_numbers)}.")
 
             # Ensure the list contains no duplicate values
             if len(set(interactions)) != len(interactions):
@@ -1028,7 +1145,7 @@ class AnalyzeInteractions:
         self._verify_dimensions(matrix=matrix)
 
         # Validate that the interaction list contains valid values
-        validate_list(interactions=interactions)
+        validate_list(interactions=interactions, interaction_labels=data.interactions)
 
         # Track whether any interactions were filtered
         changes = False
@@ -1582,18 +1699,25 @@ class AnalyzeInteractions:
             num_heatmaps = (num_cols + max_cols - 1) // max_cols  # Round up
             cols_per_heatmap = (num_cols + num_heatmaps - 1) // num_heatmaps  # Distribute evenly
 
+            rang = float(vmax - vmin)
+
             if mode == 'count':
                 tagMin = f"{vmin:.0f}"
                 tagMax = f"{vmax:.0f}"
             else:
                 tagMin = f"{vmin:.1f}"
                 tagMax = f"{vmax:.1f}"
+                rang *= 10
+
+            trunca = int(rang)
+            ticks = min(6, trunca+1)
 
             # if title ends with '(/)', it will not be displayed in the heatmap
             display = True
             if title.endswith("(/)"):
                 title = title[:-3]
                 display = False
+
 
             for i in range(num_heatmaps):
                 start_col = i * cols_per_heatmap
@@ -1610,7 +1734,7 @@ class AnalyzeInteractions:
                             vmin=vmin, 
                             vmax=vmax, 
                             cbar_kws={
-                                "ticks": np.linspace(vmin, vmax, num=6),
+                                "ticks": np.linspace(vmin, vmax, num=ticks),
                                 "format": "%.0f" if mode == 'count' else "%.1f"
                             })
 
