@@ -48,7 +48,7 @@ ARPEGGIO_INT_ENT = [
 ARPEGGIO_CONT = [
     "covalent", "hbond", "aromatic", "hydrophobic", "polar", "ionic", "xbond", "metal", 
     "carbonyl", "CARBONPI", "CATIONPI", "DONORPI", "HALOGENPI", "METSULPHURPI", 
-    "AMIDEAMIDE", "AMIDERING"
+    "AMIDEAMIDE", "AMIDERING", "weak_hbond", "weak_polar"
 ]
 
 # Types of Arpeggio interactions (currently only plane-plane interactions)
@@ -234,7 +234,7 @@ class AnalyzeInteractions:
             ValueError: If the matrix is too small or any row is too short.
         """
         if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
-            raise ValueError("The original/resulting matrix is empty, it must have at least 2 rows and 2 columns.")
+            raise ValueError("The input/output matrix is empty, it must have at least 2 rows and 2 columns.")
 
     def _get_interactions(self, cell: str) -> list[int]:
         """
