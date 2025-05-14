@@ -506,6 +506,7 @@ class AnalyzeInteractions:
             protein (bool, optional): Whether to include protein atoms in the analysis. Defaults to True.
             ligand (bool, optional): Whether to include ligand atoms in the analysis. Defaults to True.
             subunit (bool, optional): Whether to differentiate between protein subunits. Defaults to False.
+            template_file (str, optional): Path to a JSON file containing a template for the interaction data.
             save (str, optional): Path to save the processed interaction matrix. Defaults to None.
 
         Returns:
@@ -1532,8 +1533,7 @@ class AnalyzeInteractions:
             expected_types=[InteractionData],
             variable_names=['interaction_data']
         )
-
-        return interaction_data.interactions
+        return {i + 1: interaction for i, interaction in enumerate(interaction_data.interactions)}
     
     def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, font: str = None, save: bool = False):
         """
@@ -1736,7 +1736,7 @@ class AnalyzeInteractions:
                             vmax=vmax, 
                             cbar_kws={
                                 "ticks": np.linspace(vmin, vmax, num=ticks),
-                                "format": "%.0f" if mode == 'count' else "%.1f"
+                                "format": "%.0f" if mode == 'count' else "%.2f"
                             })
 
                 # if title ends with '(/)', it will not be displayed in the heatmap
