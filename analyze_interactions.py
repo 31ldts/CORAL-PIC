@@ -608,6 +608,10 @@ class AnalyzeInteractions:
                         type=self.WARNING,
                         message=f"{unprocessed_files} ({unprocessed_files*100/(len(columns)-1):.2f} %) files were not in the activity file."
                     )
+                    self._logger(
+                        type=self.INFO,
+                        message="Files not found in the activity file are labeled as '0'. Use sort_matrix(interaction_data=data, thr_activity=0.001) to filter them out."
+                    )
                 else:
                     self._logger(
                         type=self.INFO,
