@@ -134,6 +134,10 @@ class AnalyzeInteractions:
     LOWER = "lower"
     UPPER = "upper"
 
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+
     def __init__(self):
         """Initializes the class with the current working directory and default settings."""
         self.saving_directory = os.getcwd()  # Set the default saving directory
@@ -253,6 +257,26 @@ class AnalyzeInteractions:
             interactions[interaction - 1] += len(sections[index].split(SAME_DELIM))
         return interactions
 
+    def _logger(self, type: str, message: str) -> None:
+        """
+        Displays a message to the user.
+
+        Args:
+            type (str): Type of message ('info', 'warning', 'error').
+            message (str): The message to display.
+
+        Returns:
+            None
+        """
+        if type == 'info':
+            print(f"\033[1;34mINFO\033[0m: {message}")      # Azul (34)
+        elif type == 'warning':
+            print(f"\033[1;33mWARNING\033[0m: {message}")   # Amarillo (33)
+        elif type == 'error':
+            print(f"\033[1;31mERROR\033[0m: {message}")     # Rojo (31)
+        else:
+            raise ValueError("Invalid message type. Expected 'info', 'warning', or 'error'.")
+        
     def _stack_reactives(self, 
                          matrix: list[list[str]], 
                          axis: str, 
@@ -565,14 +589,30 @@ class AnalyzeInteractions:
                     raise ValueError(f"The CSV file '{activity_file}' must contain at least one row of data.")
 
                 # Update column names with activity data
+                unprocessed_files = 0
                 if correction:
                     for i in range(1, len(columns)):
                         drug_name = columns[i]
-                        columns[i] = f"{drug_name} ({data_dict.get(correction[i-1], '0')})"
+                        activity = data_dict.get(correction[i-1], '0')
+                        unprocessed_files += 1 if activity == '0' else 0
+                        columns[i] = f"{drug_name} ({activity})"
                 else:
                     for i in range(1, len(columns)):
                         drug_name = columns[i]
-                        columns[i] = f"{drug_name} ({data_dict.get(drug_name, '0')})"
+                        activity = data_dict.get(drug_name, '0')
+                        unprocessed_files += 1 if activity == '0' else 0
+                        columns[i] = f"{drug_name} ({activity})"
+
+                if unprocessed_files > 0:
+                    self._logger(
+                        type=self.WARNING,
+                        message=f"{unprocessed_files} ({unprocessed_files*100/(len(columns)-1):.2f} %) files were not in the activity file."
+                    )
+                else:
+                    self._logger(
+                        type=self.INFO,
+                        message="All files were in the activity file."
+                    )
 
             else:
                 for i in range(1, len(columns)):
