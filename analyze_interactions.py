@@ -311,22 +311,22 @@ class AnalyzeInteractions:
             plt.savefig(os.path.join(self.saving_directory, plot_name + '.png'))
             plt.close(fig)  # Close the figure after saving to avoid display overlap
 
-    def _verify_font(self, font: str) -> str:
+    def _verify_case(self, case: str) -> str:
         """
-        Verifies the font parameter for heatmap visualization.
+        Verifies the case parameter for heatmap visualization.
 
         Args:
-            font (str): The font type to verify.
+            case (str): The case type to verify.
 
         Returns:
-            str: The verified font type.
+            str: The verified case type.
 
         Raises:
-            ValueError: If the font is not recognized.
+            ValueError: If the case is not recognized.
         """
-        if font not in [self.LOWER, self.UPPER, None]:
-            raise ValueError(f"Invalid font '{font}'. Expected 'lower', 'upper' or None.")
-        return font
+        if case not in [self.LOWER, self.UPPER, None]:
+            raise ValueError(f"Invalid case '{case}'. Expected 'lower', 'upper' or None.")
+        return case
     
     #################################
     # Public Methods: Configuration #
@@ -1535,7 +1535,7 @@ class AnalyzeInteractions:
         )
         return {i + 1: interaction for i, interaction in enumerate(interaction_data.interactions)}
     
-    def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, font: str = None, save: bool = False):
+    def heatmap(self, interaction_data: InteractionData, title: str, mode: str, x_label: str = "", y_label: str = "", min_v: int = None, max_v: int = None, case: str = None, save: bool = False):
         """
         Generates a heatmap based on interaction data using different processing modes.
 
@@ -1558,7 +1558,7 @@ class AnalyzeInteractions:
             y_label (str, optional): Label for the y-axis. Defaults to an empty string.
             min_v (int, optional): Minimum value for the heatmap color scale. Defaults to None (auto-scaling).
             max_v (int, optional): Maximum value for the heatmap color scale. Defaults to None (auto-scaling).
-            font (str, optional): Font style for the heatmap labels. Can be 'upper', 'lower', or None. Defaults to None.
+            case (str, optional): Case style for the heatmap labels. Can be 'upper', 'lower', or None. Defaults to None.
             save (bool, optional): If True, saves the heatmap instead of displaying it. Defaults to False.
 
         Returns:
@@ -1673,7 +1673,7 @@ class AnalyzeInteractions:
                 data[residue] = [np.nan for _ in range(len(self.interaction_labels))]
             return data, self.transpose_matrix(interaction_data=matrix)
 
-        def plot_heatmap(self, data, title, x_label, y_label, mode, min_v, max_v, save, font):
+        def plot_heatmap(self, data, title, x_label, y_label, mode, min_v, max_v, save, case):
             """
             Creates and optionally saves the heatmap visualization.
 
@@ -1690,7 +1690,7 @@ class AnalyzeInteractions:
             Returns:
                 None: Displays the heatmap or saves it to a file.
             """
-            df = pd.DataFrame(data, index=self.interaction_labels if font == None else [elemento.upper() for elemento in self.interaction_labels] if font == "upper" else [elemento.lower() for elemento in self.interaction_labels])
+            df = pd.DataFrame(data, index=self.interaction_labels if case == None else [elemento.upper() for elemento in self.interaction_labels] if case == "upper" else [elemento.lower() for elemento in self.interaction_labels])
             max_cols = self.heat_max_cols  # Maximum number of columns per heatmap
             num_cols = len(df.columns)
 
@@ -1757,7 +1757,7 @@ class AnalyzeInteractions:
                     plt.savefig(filename)
                     plt.close()
 
-        self._verify_font(font=font)
+        self._verify_case(case=case)
 
         data = copy.deepcopy(interaction_data)
         matrix = data.matrix
@@ -1775,7 +1775,7 @@ class AnalyzeInteractions:
         data = process_matrix(matrix=matrix, mode=mode)
 
         # Generate and display/save the heatmap
-        plot_heatmap(self=self, data=data, title=title, x_label=x_label, y_label=y_label, mode=mode, min_v=min_v, max_v=max_v, save=save, font=font)
+        plot_heatmap(self=self, data=data, title=title, x_label=x_label, y_label=y_label, mode=mode, min_v=min_v, max_v=max_v, save=save, case=case)
 
     def bar_chart(self,
         interaction_data: InteractionData,
@@ -1788,7 +1788,7 @@ class AnalyzeInteractions:
         save: bool = False,
         colors: list[str] = None,
         type_count: bool = False,
-        font: str = None
+        case: str = None
     ) -> None:
         """
         Generates a bar chart based on interaction data.
@@ -1816,7 +1816,7 @@ class AnalyzeInteractions:
             save (bool, optional): If True, saves the chart as a PNG file. Defaults to False.
             colors (list[str], optional): List of colors for interaction types. Defaults to None.
             type_count (bool, optional): If True, counts the occurrences of each interaction type. Defaults to False.
-            font (str, optional): Font style for the plot leyend. Can be 'upper', 'lower', or None. Defaults to None.
+            case (str, optional): Case style for the plot leyend. Can be 'upper', 'lower', or None. Defaults to None.
 
         Returns:
             None: The function either displays or saves the plot.
@@ -1825,7 +1825,7 @@ class AnalyzeInteractions:
             ValueError: If `axis` is not 'rows' or 'columns'.
         """
 
-        self._verify_font(font=font)
+        self._verify_case(case=case)
 
         matrix = interaction_data.matrix
         self.set_config(interaction_data=interaction_data)
@@ -1929,7 +1929,7 @@ class AnalyzeInteractions:
                 bars = []
                 bottoms = [0] * len(indices)
                 for index, group in enumerate(transposed_data):
-                    label = self.interaction_labels[index] if font is None else self.interaction_labels[index].upper() if font == "upper" else self.interaction_labels[index].lower()
+                    label = self.interaction_labels[index] if case is None else self.interaction_labels[index].upper() if case == "upper" else self.interaction_labels[index].lower()
                     bars.append(ax.bar(indices, group, bottom=bottoms, label=label, color=colors[index]))
                     bottoms = [i + j for i, j in zip(bottoms, group)]
 
@@ -1977,7 +1977,7 @@ class AnalyzeInteractions:
         save: bool = False,
         colors: list[str] = None,
         type_count: bool = False,
-        font: str = None
+        case: str = None
     ) -> None:
         """
         Generates a pie chart based on interaction data.
@@ -1994,7 +1994,7 @@ class AnalyzeInteractions:
             colors (list[str], optional): List of colors for interaction types. Defaults to None.
             type_count (bool, optional): If True, counts the occurrences of each interaction type instead of 
                                         using interaction values. Defaults to False.
-            font (str, optional): Font style for the plot leyend. Can be 'upper', 'lower', or None. Defaults to None.
+            case (str, optional): Case style for the plot leyend. Can be 'upper', 'lower', or None. Defaults to None.
 
         Returns:
             None: The function either displays or saves the plot.
@@ -2015,7 +2015,7 @@ class AnalyzeInteractions:
                 for i, (label, total) in enumerate(zip(self.interaction_labels, total_interactions))
                 if total > 0]
 
-        def _plot_pie_chart(labels: list[str], sizes: list[int], colors: list[str], total_interactions: list[int], font: str) -> None:
+        def _plot_pie_chart(labels: list[str], sizes: list[int], colors: list[str], total_interactions: list[int], case: str) -> None:
             """
             Creates and formats a pie chart.
 
@@ -2037,7 +2037,7 @@ class AnalyzeInteractions:
             # Calculate percentages and create legend
             total = sum(total_interactions)
             legend_labels = [
-                f"{label if font is None else label.upper() if font == 'upper' else label.lower()} ({round(count / total * 100, 2)}%)"
+                f"{label if case is None else label.upper() if case == 'upper' else label.lower()} ({round(count / total * 100, 2)}%)"
                 for label, count in zip(self.interaction_labels, total_interactions)
                 if count != 0
             ]
@@ -2059,7 +2059,7 @@ class AnalyzeInteractions:
                 return zip(*non_zero_interactions)  # Separates into labels, sizes, and colors
             return [], [], []
         
-        self._verify_font(font=font)
+        self._verify_case(case=case)
         self.set_config(interaction_data=interaction_data)
         matrix = interaction_data.matrix
         # Initialize plotting parameters and data
@@ -2071,7 +2071,7 @@ class AnalyzeInteractions:
         labels_pie, sizes, pie_colors = _prepare_pie_chart_data(non_zero_interactions)
         
         # Plot the pie chart
-        fig = _plot_pie_chart(labels_pie, sizes, pie_colors, total_interactions, font)
+        fig = _plot_pie_chart(labels_pie, sizes, pie_colors, total_interactions, case)
 
         # Show or save the plot
         self._plot_end(save, plt, fig, plot_name)
