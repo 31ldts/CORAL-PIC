@@ -2189,7 +2189,15 @@ class AnalyzeInteractions:
         file_path = os.path.join(self.saving_directory, filename)
 
         # Prepare data for the first sheet (Matrix)
-        matrix_df = pd.DataFrame(interaction_data.matrix)
+        if not (interaction_data.protein and interaction_data.ligand) and interaction_data.subunit:
+            matrix = copy.deepcopy(interaction_data.matrix)
+            for i in range(1, len(matrix)):
+                for j in range(1, len(matrix[i])):
+                    if matrix[i][j] != "":
+                        matrix[i][j] = matrix[i][j].replace(" ||", "")
+            matrix_df = pd.DataFrame(matrix)
+        else:
+            matrix_df = pd.DataFrame(interaction_data.matrix)
 
         # Prepare data for the second sheet (Attributes)
         # Create id, interacciones, colores columns for lists
