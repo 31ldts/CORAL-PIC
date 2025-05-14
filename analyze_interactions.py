@@ -1626,10 +1626,10 @@ class AnalyzeInteractions:
                             interaction = int(section.split(' ')[0]) - 1
                             current_value = data[residue][interaction]
 
-                            if mode in ["min", "max"]:
+                            if mode in ["min", "max"] and activity > 0.0000:
                                 if np.isnan(current_value) or op(activity, current_value):
                                     data[residue][interaction] = activity
-                            elif mode == "mean":
+                            elif mode == "mean" and activity > 0.0000:
                                 if not isinstance(current_value, list):
                                     data[residue][interaction] = [1, activity]
                                 else:
