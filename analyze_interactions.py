@@ -224,7 +224,7 @@ class AnalyzeInteractions:
         else:
             raise ValueError("Cannot determine the residues' axis.")
 
-    def _verify_dimensions(self, matrix: list[list[str]]) -> None:
+    def _verify_dimensions(self, matrix: list[list[str]], _pie: bool = False) -> None:
         """
         Verify matrix dimensions to ensure at least 2 rows and 2 columns.
 
@@ -237,7 +237,10 @@ class AnalyzeInteractions:
         Raises:
             ValueError: If the matrix is too small or any row is too short.
         """
-        if len(matrix) < 2 or any(len(row) < 2 for row in matrix):
+        if _pie:
+            if len(matrix) < 1 or any(len(row) < 1 for row in matrix):
+                raise ValueError("The input/output matrix is empty, it must have at least 1 row and 1 column.")
+        elif len(matrix) < 2 or any(len(row) < 2 for row in matrix):
             raise ValueError("The input/output matrix is empty, it must have at least 2 rows and 2 columns.")
 
     def _get_interactions(self, cell: str) -> list[int]:
@@ -324,7 +327,7 @@ class AnalyzeInteractions:
         data, indices = self._stack_reactives(matrix=matrix,
                                               axis=axis,
                                               type_count=type_count)
-        transposed_data = self.transpose_matrix(data)
+        transposed_data = self.transpose_matrix(data, _pie=True)
         return colors, data, indices, transposed_data
 
     def _plot_end(self, save, plt, fig, plot_name):
@@ -1561,7 +1564,7 @@ class AnalyzeInteractions:
 
         return df
 
-    def get_interactions(self, interaction_data: InteractionData) -> list[str]:
+    def get_interactions(self, interaction_data: InteractionData) -> dict[int, str]:
         """
         Retrieves the interaction labels from the InteractionData object.
 
@@ -2018,6 +2021,7 @@ class AnalyzeInteractions:
         interaction_data: InteractionData,
         plot_name: str,
         axis: str,
+        title: str = "Interaction Types",
         save: bool = False,
         colors: list[str] = None,
         type_count: bool = False,
@@ -2059,7 +2063,7 @@ class AnalyzeInteractions:
                 for i, (label, total) in enumerate(zip(self.interaction_labels, total_interactions))
                 if total > 0]
 
-        def _plot_pie_chart(labels: list[str], sizes: list[int], colors: list[str], total_interactions: list[int], case: str) -> None:
+        def _plot_pie_chart(labels: list[str], sizes: list[int], colors: list[str], total_interactions: list[int], case: str, title: str) -> None:
             """
             Creates and formats a pie chart.
 
@@ -2076,7 +2080,7 @@ class AnalyzeInteractions:
 
             # Plot the pie chart
             ax_pie.pie(sizes, labels=None, colors=colors, autopct='', startangle=140)
-            ax_pie.set_title('Interaction Percentages')
+            ax_pie.set_title(title)
 
             # Calculate percentages and create legend
             total = sum(total_interactions)
@@ -2115,7 +2119,7 @@ class AnalyzeInteractions:
         labels_pie, sizes, pie_colors = _prepare_pie_chart_data(non_zero_interactions)
         
         # Plot the pie chart
-        fig = _plot_pie_chart(labels_pie, sizes, pie_colors, total_interactions, case)
+        fig = _plot_pie_chart(labels_pie, sizes, pie_colors, total_interactions, case, title)
 
         # Show or save the plot
         self._plot_end(save, plt, fig, plot_name)
@@ -2478,7 +2482,8 @@ class AnalyzeInteractions:
     def transpose_matrix(
             self, 
             interaction_data: InteractionData, 
-            save: str = None
+            save: str = None,
+            _pie: bool = False
             ) -> InteractionData:
         """
         Transposes the given interaction matrix.
@@ -2508,7 +2513,7 @@ class AnalyzeInteractions:
         data = copy.deepcopy(interaction_data)
         matrix = data.matrix if isinstance(interaction_data, InteractionData) else copy.deepcopy(data)
 
-        self._verify_dimensions(matrix=matrix)
+        self._verify_dimensions(matrix=matrix, _pie=_pie)
 
         # Transpose the matrix using list comprehension
         transposed = [[row[i] for row in matrix] for i in range(len(matrix[0]))]
